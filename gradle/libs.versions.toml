@@ -4,6 +4,7 @@ spring-modulith = "2.1.2"
 archunit = "1.5.1"
 wiremock = "3.13.2"
 spotless = "8.11.0"
+google-java-format = "2.0.0"
 checkstyle = "14.4.0"
 pmd = "7.29.0"
 
@@ -12,7 +13,7 @@ spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-depe
 spring-modulith-bom = { module = "org.springframework.modulith:spring-modulith-bom", version.ref = "spring-modulith" }
 archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
 wiremock-standalone = { module = "org.wiremock:wiremock-standalone", version.ref = "wiremock" }
+spotless-gradle-plugin = { module = "com.diffplug.spotless:spotless-plugin-gradle", version.ref = "spotless" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
-spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
