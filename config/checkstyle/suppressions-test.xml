@@ -4,4 +4,6 @@
 <suppressions>
     <!-- 테스트의 기대값은 스펙의 실제 숫자라서 상수로 빼지 않는다 -->
     <suppress checks="MagicNumber" files=".*"/>
+    <!-- 테스트 메서드 이름은 한글로 쓴다 -->
+    <suppress checks="MethodName" files=".*"/>
 </suppressions>
