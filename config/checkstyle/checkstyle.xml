@@ -23,6 +23,10 @@
         <module name="ClassTypeParameterName"/>
         <module name="MethodTypeParameterName"/>
 
+        <module name="ImportControl">
+            <property name="file" value="${config_loc}/import-control.xml"/>
+        </module>
+
         <module name="MagicNumber"/>
         <module name="CyclomaticComplexity">
             <property name="max" value="8"/>
