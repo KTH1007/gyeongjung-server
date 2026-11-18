@@ -14,7 +14,9 @@ java {
 val libs = extensions.getByType<VersionCatalogsExtension>().named("libs")
 
 dependencies {
-    implementation(platform(libs.findLibrary("spring-boot-dependencies").get()))
+    val springBootBom = platform(libs.findLibrary("spring-boot-dependencies").get())
+    implementation(springBootBom)
+    annotationProcessor(springBootBom)
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
