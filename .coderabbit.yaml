@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: ko-KR
+tone_instructions: 간결하고 직설적으로 쓴다. 칭찬 없이 문제와 근거 위주로 쓴다.
+early_access: false
+
+reviews:
+  profile: chill
+  poem: false
+  auto_review:
+    ignore_usernames: ["dependabot[bot]"]
+  path_filters:
+    - "!gradle/wrapper/**"
+    - "!gradlew"
+    - "!gradlew.bat"
+  path_instructions:
+    - path: "**/src/main/java/**"
+      instructions: |
+        - 다른 모듈의 공개 API가 아닌 클래스를 import하면 지적한다. 모듈 간 호출은 공개 인터페이스와 이벤트로만 한다.
+        - 주석은 WHY만 쓴다. 코드가 말해주는 WHAT을 반복하는 주석은 지적한다.
+        - API 키, 웹훅 URL, 토큰이 코드에 있으면 지적한다. 환경변수로만 받는다.
+    - path: "**/db/migration/**"
+      instructions: |
+        - 이미 적용된 마이그레이션을 수정하면 지적한다. 새 버전 파일로 추가해야 한다.
+        - 다른 모듈이 소유한 테이블에 FK를 걸면 지적한다. 모듈 간 참조는 public_id로 한다.
+        - PK는 BIGINT AUTO_INCREMENT이고, 외부에 노출되는 행은 별도의 UUID public_id(BINARY(16), unique)를 가져야 한다.
+    - path: ".github/workflows/**"
+      instructions: |
+        - permissions가 최소 권한인지 확인한다.
+        - PR 제목, 본문, 브랜치 이름 같은 외부 입력을 run에 직접 넣으면 지적한다.
