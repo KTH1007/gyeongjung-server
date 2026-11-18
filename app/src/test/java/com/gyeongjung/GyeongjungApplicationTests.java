@@ -1,13 +1,11 @@
-package com.gyeongjung.gyeongjung_server;
+package com.gyeongjung;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class GyeongjungServerApplicationTests {
+class GyeongjungApplicationTests {
 
-	@Test
-	void contextLoads() {
-	}
-
+    @Test
+    void contextLoads() {}
 }
