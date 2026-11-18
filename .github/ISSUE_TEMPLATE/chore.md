@@ -1,5 +1,5 @@
 ---
-name: 작업
+name: 유지보수 작업
 about: 설정, 빌드, 인프라 같은 유지보수 작업
 title: "chore: "
 labels: chore

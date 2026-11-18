@@ -1,5 +1,5 @@
 ---
-name: 테스트
+name: 테스트 추가
 about: 테스트를 추가하거나 보강할 때
 title: "test: "
 labels: test
