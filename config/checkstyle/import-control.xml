@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!DOCTYPE import-control PUBLIC "-//Checkstyle//DTD ImportControl Configuration 1.4//EN"
+    "https://checkstyle.org/dtds/import_control_1_4.dtd">
+<import-control pkg="com.gyeongjung">
+    <!-- 새 모듈은 아래에 항목을 추가해야 한다. 항목이 없으면 모든 import가 막혀서 빌드가 실패한다 -->
+    <allow pkg="^(?!com\.gyeongjung(\.|$)).*" regex="true"/>
+
+    <subpackage name="shared">
+        <allow pkg="com.gyeongjung.shared"/>
+    </subpackage>
+
+    <subpackage name="ops">
+        <allow pkg="com.gyeongjung.ops"/>
+        <allow pkg="com.gyeongjung.shared"/>
+    </subpackage>
+
+    <subpackage name="collector">
+        <allow pkg="com.gyeongjung.collector"/>
+        <allow pkg="com.gyeongjung.shared"/>
+        <allow pkg="com.gyeongjung.ops" exact-match="true"/>
+    </subpackage>
+</import-control>
