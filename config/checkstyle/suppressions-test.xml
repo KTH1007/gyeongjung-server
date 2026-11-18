@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+    "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+<suppressions>
+    <!-- 테스트의 기대값은 스펙의 실제 숫자라서 상수로 빼지 않는다 -->
+    <suppress checks="MagicNumber" files=".*"/>
+</suppressions>

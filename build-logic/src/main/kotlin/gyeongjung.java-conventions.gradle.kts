@@ -32,6 +32,11 @@ checkstyle {
     maxWarnings = 0
 }
 
+tasks.withType<Checkstyle>().configureEach {
+    val suppressions = if (name == "checkstyleTest") "suppressions-test.xml" else "suppressions-main.xml"
+    configProperties = mapOf("suppressions" to suppressions)
+}
+
 pmd {
     toolVersion = libs.findVersion("pmd").get().requiredVersion
     ruleSets = emptyList()
