@@ -44,6 +44,38 @@ class AppTimeZoneTest {
     }
 
     @Test
+    void 존재하지_않는_날짜는_IllegalArgumentException을_던진다() {
+        // given
+        String nonexistentDate = "2026-02-30 12:00:00";
+
+        // when & then
+        assertThatThrownBy(() -> AppTimeZone.parseKst(nonexistentDate))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void 평년의_2월_29일은_IllegalArgumentException을_던진다() {
+        // given
+        String notLeapYear = "2027-02-29 12:00:00";
+
+        // when & then
+        assertThatThrownBy(() -> AppTimeZone.parseKst(notLeapYear))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void 윤년의_2월_29일은_변환한다() {
+        // given
+        String leapDay = "2028-02-29 12:00:00";
+
+        // when
+        Instant result = AppTimeZone.parseKst(leapDay);
+
+        // then
+        assertThat(result).isEqualTo(Instant.parse("2028-02-29T03:00:00Z"));
+    }
+
+    @Test
     void UTC_15시는_KST로_보면_다음날이다() {
         // given
         Instant utc = Instant.parse("2026-11-10T15:00:00Z");

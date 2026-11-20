@@ -8,12 +8,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 class GlobalExceptionHandlerTest {
@@ -65,7 +68,40 @@ class GlobalExceptionHandlerTest {
         // then
         result.andExpect(status().isMethodNotAllowed())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$.status").value(405));
+                .andExpect(jsonPath("$.status").value(405))
+                .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
+    }
+
+    @Test
+    void 읽을_수_없는_요청_본문은_400과_INVALID_REQUEST로_응답한다() throws Exception {
+        // given
+        String malformedJson = "{ not-json";
+
+        // when
+        ResultActions result =
+                mockMvc.perform(
+                        post("/probe/body")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(malformedJson));
+
+        // then
+        result.andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void 존재하지_않는_경로는_404와_NOT_FOUND로_응답한다() throws Exception {
+        // given
+        String path = "/probe/missing";
+
+        // when
+        ResultActions result = mockMvc.perform(get(path));
+
+        // then
+        result.andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
     }
 
     @RestController
@@ -79,6 +115,11 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/probe/unexpected")
         String unexpected() {
             throw new IllegalStateException("secret-detail");
+        }
+
+        @PostMapping("/probe/body")
+        String body(@RequestBody Map<String, String> payload) {
+            return payload.toString();
         }
     }
 }
