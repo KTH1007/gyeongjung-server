@@ -5,6 +5,7 @@ plugins {
 dependencies {
     implementation("org.springframework:spring-context")
     implementation("org.springframework.modulith:spring-modulith-api")
+    implementation("org.springframework.data:spring-data-commons")
     implementation("org.springframework.data:spring-data-jpa")
     implementation("jakarta.persistence:jakarta.persistence-api")
 
