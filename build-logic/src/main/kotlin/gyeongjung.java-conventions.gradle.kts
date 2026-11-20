@@ -61,6 +61,8 @@ tasks.withType<JavaCompile> {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // CI는 UTC인 서버에서 돈다. JVM 시간대가 UTC면 UTC 변환이 깨져도 테스트가 통과하므로 일부러 UTC가 아닌 시간대로 고정한다.
+    jvmArgs("-Duser.timezone=Asia/Seoul")
     filter {
         isFailOnNoMatchingTests = false
     }

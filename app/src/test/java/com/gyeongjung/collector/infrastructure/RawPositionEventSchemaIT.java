@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.gyeongjung.AbstractMySqlIT;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -13,6 +16,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Transactional
 class RawPositionEventSchemaIT extends AbstractMySqlIT {
+
+    private static final DateTimeFormatter DB_FORMAT =
+            DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss.SSS");
 
     @Autowired RawPositionEventTestRepository events;
     @Autowired CollectionGapTestRepository gaps;
@@ -59,6 +65,25 @@ class RawPositionEventSchemaIT extends AbstractMySqlIT {
         Instant after = Instant.now();
         assertThat(gap.getCreatedAt()).isBetween(before, after);
         assertThat(gap.getUpdatedAt()).isBetween(before, after);
+    }
+
+    @Test
+    void 감사_시각은_DB에_저장된_값과_메모리_값이_같다() {
+        // given
+        CollectionGapEntity gap =
+                new CollectionGapEntity(Instant.parse("2026-11-10T13:00:00Z"), "api_failure");
+
+        // when
+        gaps.saveAndFlush(gap);
+        String raw =
+                jdbcTemplate.queryForObject(
+                        "select cast(created_at as char) from collection_gap where id = ?",
+                        String.class,
+                        gap.getId());
+
+        // then
+        Instant stored = LocalDateTime.parse(raw, DB_FORMAT).toInstant(ZoneOffset.UTC);
+        assertThat(gap.getCreatedAt()).isEqualTo(stored);
     }
 
     private static RawPositionEventEntity event(String trainNo, Instant receivedAt) {
