@@ -24,6 +24,8 @@ dependencies {
     implementation(springBootBom)
     implementation(modulithBom)
     annotationProcessor(springBootBom)
+    compileOnly("org.projectlombok:lombok")
+    annotationProcessor("org.projectlombok:lombok")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
@@ -54,7 +56,7 @@ spotless {
 }
 
 tasks.withType<JavaCompile> {
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
+    options.compilerArgs.addAll(listOf("-Xlint:all,-processing", "-Werror"))
 }
 
 tasks.withType<Test> {

@@ -27,6 +27,11 @@
             <property name="file" value="${config_loc}/import-control.xml"/>
         </module>
 
+        <module name="IllegalImport">
+            <property name="illegalClasses"
+                      value="lombok.Data, lombok.Setter, lombok.EqualsAndHashCode, lombok.AllArgsConstructor"/>
+        </module>
+
         <module name="MagicNumber"/>
         <module name="CyclomaticComplexity">
             <property name="max" value="8"/>
