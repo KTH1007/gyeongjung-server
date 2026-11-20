@@ -44,9 +44,13 @@ services:
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=60 -XX:+ExitOnOutOfMemoryError"
+      LOGGING_FILE_NAME: /var/log/gyeongjung/gyeongjung.log
+    volumes:
+      - worker-logs:/var/log/gyeongjung
     mem_limit: 512m
     stop_grace_period: 40s
     logging: *default-logging
 
 volumes:
   mysql-data:
+  worker-logs:
