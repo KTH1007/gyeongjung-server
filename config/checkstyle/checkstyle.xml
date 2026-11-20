@@ -32,7 +32,9 @@
                       value="lombok.Data, lombok.Setter, lombok.EqualsAndHashCode, lombok.AllArgsConstructor"/>
         </module>
 
-        <module name="MagicNumber"/>
+        <module name="MagicNumber">
+            <property name="ignoreAnnotation" value="true"/>
+        </module>
         <module name="CyclomaticComplexity">
             <property name="max" value="8"/>
         </module>
@@ -43,6 +45,7 @@
         <module name="ParameterNumber">
             <property name="max" value="5"/>
             <property name="ignoreOverriddenMethods" value="true"/>
+            <property name="ignoreAnnotatedBy" value="Builder"/>
         </module>
         <module name="NestedIfDepth">
             <property name="max" value="0"/>
