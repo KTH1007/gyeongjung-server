@@ -17,7 +17,9 @@ RUN --mount=type=cache,target=/root/.gradle \
 FROM eclipse-temurin:25-jre
 ENV TZ=UTC
 RUN groupadd --system --gid 10001 app \
-    && useradd --system --uid 10001 --gid app --no-create-home app
+    && useradd --system --uid 10001 --gid app --no-create-home app \
+    && mkdir -p /var/log/gyeongjung \
+    && chown app:app /var/log/gyeongjung
 WORKDIR /app
 # 바뀌는 빈도가 낮은 레이어를 위에 둬서 코드만 바뀌면 의존성 레이어가 캐시를 쓴다
 COPY --from=builder /extracted/dependencies/ ./
