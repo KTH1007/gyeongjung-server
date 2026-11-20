@@ -26,3 +26,12 @@ jobs:
           java-version: 25
       - uses: gradle/actions/setup-gradle@v6
       - run: ./gradlew build
+
+  docker-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: docker build -t gyeongjung-server:ci .
