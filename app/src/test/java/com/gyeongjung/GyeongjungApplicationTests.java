@@ -1,10 +1,8 @@
 package com.gyeongjung;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
-class GyeongjungApplicationTests {
+class GyeongjungApplicationTests extends AbstractMySqlIT {
 
     @Test
     void contextLoads() {}
