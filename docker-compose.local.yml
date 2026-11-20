@@ -1,0 +1,5 @@
+services:
+  worker:
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      SEOUL_SOURCE: replay
