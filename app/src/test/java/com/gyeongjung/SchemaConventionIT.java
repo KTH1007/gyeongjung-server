@@ -39,7 +39,7 @@ class SchemaConventionIT extends AbstractMySqlIT {
     }
 
     @Test
-    void public_id_컬럼은_BINARY16_NOT_NULL이고_유니크_인덱스가_있다() {
+    void public_id_컬럼은_BINARY16_NOT_NULL이고_단독_유니크_인덱스가_있다() {
         // given
         String sql =
                 """
@@ -49,7 +49,12 @@ class SchemaConventionIT extends AbstractMySqlIT {
                     and exists (
                       select 1 from information_schema.statistics s
                       where s.table_schema = c.table_schema and s.table_name = c.table_name
-                        and s.column_name = 'public_id' and s.non_unique = 0))
+                        and s.column_name = 'public_id' and s.non_unique = 0
+                        and (
+                          select count(*) from information_schema.statistics s2
+                          where s2.table_schema = s.table_schema
+                            and s2.table_name = s.table_name
+                            and s2.index_name = s.index_name) = 1))
                 """;
 
         // when
