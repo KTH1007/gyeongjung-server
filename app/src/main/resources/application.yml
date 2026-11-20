@@ -1,6 +1,10 @@
 server:
   shutdown: graceful
 
+logging:
+  pattern:
+    correlation: "[%X] "
+
 spring:
   application:
     name: gyeongjung-server
