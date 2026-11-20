@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <!-- Boot 기본 패턴이 쓰는 %m과 %wEx를 마스킹 변환기로 덮어써서, 패턴을 복사하지 않고도 콘솔과 파일 로그 모두에 적용한다 -->
+    <conversionRule conversionWord="m" class="com.gyeongjung.shared.logging.MaskingMessageConverter"/>
+    <conversionRule conversionWord="msg" class="com.gyeongjung.shared.logging.MaskingMessageConverter"/>
+    <conversionRule conversionWord="message" class="com.gyeongjung.shared.logging.MaskingMessageConverter"/>
+    <conversionRule conversionWord="wEx" class="com.gyeongjung.shared.logging.MaskingThrowableConverter"/>
+
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>
