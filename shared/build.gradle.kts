@@ -14,6 +14,7 @@ dependencies {
     implementation("org.slf4j:slf4j-api")
     implementation("ch.qos.logback:logback-classic")
     implementation("org.springframework.boot:spring-boot")
+    compileOnly("jakarta.servlet:jakarta.servlet-api")
 
     testImplementation("org.springframework.boot:spring-boot-starter-data-jpa")
     testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
