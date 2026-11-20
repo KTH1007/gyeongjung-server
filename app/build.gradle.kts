@@ -19,3 +19,7 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers-junit-jupiter")
     testImplementation("org.testcontainers:testcontainers-mysql")
 }
+
+tasks.bootJar {
+    archiveFileName = "app.jar"
+}
