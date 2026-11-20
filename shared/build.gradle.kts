@@ -12,6 +12,8 @@ dependencies {
     implementation("org.springframework.data:spring-data-jpa")
     implementation("jakarta.persistence:jakarta.persistence-api")
     implementation("org.slf4j:slf4j-api")
+    implementation("ch.qos.logback:logback-classic")
+    implementation("org.springframework.boot:spring-boot")
 
     testImplementation("org.springframework.boot:spring-boot-starter-data-jpa")
     testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
