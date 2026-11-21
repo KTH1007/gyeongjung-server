@@ -1,0 +1,399 @@
+{
+  "uid": "jvm-overview",
+  "title": "JVM과 호스트 개요",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "가동 시간",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "process_uptime_seconds{job=\"worker\"}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "힙 사용률",
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum(jvm_memory_used_bytes{job=\"worker\",area=\"heap\"}) / sum(jvm_memory_max_bytes{job=\"worker\",area=\"heap\"} > 0)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 85
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "DB 연결 (사용 중)",
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hikaricp_connections_active{job=\"worker\"}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "타깃 상태",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up",
+          "legendFormat": "{{job}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "힙 메모리",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(jvm_memory_used_bytes{job=\"worker\",area=\"heap\"})",
+          "legendFormat": "사용"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(jvm_memory_committed_bytes{job=\"worker\",area=\"heap\"})",
+          "legendFormat": "커밋"
+        },
+        {
+          "refId": "C",
+          "expr": "sum(jvm_memory_max_bytes{job=\"worker\",area=\"heap\"} > 0)",
+          "legendFormat": "최대"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "비힙 메모리",
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(jvm_memory_used_bytes{job=\"worker\",area=\"nonheap\"})",
+          "legendFormat": "사용"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(jvm_memory_committed_bytes{job=\"worker\",area=\"nonheap\"})",
+          "legendFormat": "커밋"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "GC 일시정지 (초당)",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(jvm_gc_pause_seconds_sum{job=\"worker\"}[5m])",
+          "legendFormat": "{{gc}} {{action}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "스레드",
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "jvm_threads_live_threads{job=\"worker\"}",
+          "legendFormat": "전체"
+        },
+        {
+          "refId": "B",
+          "expr": "jvm_threads_daemon_threads{job=\"worker\"}",
+          "legendFormat": "데몬"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "프로세스 CPU",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "process_cpu_usage{job=\"worker\"}",
+          "legendFormat": "CPU"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "DB 커넥션 풀",
+      "gridPos": {
+        "x": 12,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hikaricp_connections_active{job=\"worker\"}",
+          "legendFormat": "사용 중"
+        },
+        {
+          "refId": "B",
+          "expr": "hikaricp_connections_idle{job=\"worker\"}",
+          "legendFormat": "유휴"
+        },
+        {
+          "refId": "C",
+          "expr": "hikaricp_connections_pending{job=\"worker\"}",
+          "legendFormat": "대기"
+        },
+        {
+          "refId": "D",
+          "expr": "hikaricp_connections_max{job=\"worker\"}",
+          "legendFormat": "최대"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "호스트 디스크 여유 (%)",
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}",
+          "legendFormat": "{{mountpoint}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "호스트 메모리",
+      "gridPos": {
+        "x": 12,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "node_memory_MemAvailable_bytes",
+          "legendFormat": "가용"
+        },
+        {
+          "refId": "B",
+          "expr": "node_memory_MemTotal_bytes",
+          "legendFormat": "전체"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        }
+      }
+    }
+  ]
+}
