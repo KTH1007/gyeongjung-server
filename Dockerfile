@@ -28,4 +28,6 @@ COPY --from=builder /extracted/spring-boot-loader/ ./
 COPY --from=builder /extracted/snapshot-dependencies/ ./
 COPY --from=builder /extracted/application/ ./
 USER app
+HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
+    CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8081 && printf 'GET /actuator/health HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '\"status\":\"UP\"' <&3"]
 ENTRYPOINT ["java", "-jar", "app.jar"]
