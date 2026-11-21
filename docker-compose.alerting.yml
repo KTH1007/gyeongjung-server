@@ -1,6 +1,7 @@
 services:
   grafana:
     environment:
+      GF_UNIFIED_ALERTING_ENABLED: "true"
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:?.env에 DISCORD_WEBHOOK_URL을 설정한다}
       ENVIRONMENT_NAME: ${ENVIRONMENT_NAME:-local}
     volumes:

@@ -13,9 +13,11 @@ failures=0
 pass() { echo "  OK   $1"; }
 fail() { echo "  FAIL $1"; failures=$((failures + 1)); }
 
+# 연결만 받고 응답하지 않는 worker에서 cat이 영원히 기다리면 이후 검사와 실패 집계가 실행되지 않는다.
+# exec cat으로 bash를 대체해야 timeout이 cat의 부모가 되어 시간 초과 뒤 좀비가 PID 1(JVM)에 남지 않는다.
 worker_get() {
-    docker compose --profile app exec -T worker bash -c \
-        "exec 3<>/dev/tcp/127.0.0.1/8081 && printf 'GET $1 HTTP/1.0\r\n\r\n' >&3 && cat <&3"
+    docker compose --profile app exec -T worker timeout 5 bash -c \
+        "exec 3<>/dev/tcp/127.0.0.1/8081 && printf 'GET $1 HTTP/1.0\r\n\r\n' >&3 && exec cat <&3"
 }
 
 echo "[1] worker /actuator/health"
@@ -47,12 +49,19 @@ fi
 
 if [ "$EXPECTED_ALERT_RULES" -gt 0 ]; then
     echo "[4] Grafana 알림 규칙"
-    count=$(curl -fsS -m 5 -u "admin:${GRAFANA_ADMIN_PASSWORD:-}" "$GRAFANA_URL/api/v1/provisioning/alert-rules" 2>/dev/null \
-        | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)
-    if [ "$count" -ge "$EXPECTED_ALERT_RULES" ]; then
-        pass "알림 규칙 ${count}개"
+    # compose는 .env를 읽어도 부모 셸의 환경변수로 내보내지 않아서, 없으면 실행 중인 grafana가 쓰는 값을 가져온다.
+    password=${GRAFANA_ADMIN_PASSWORD:-$(docker compose exec -T grafana printenv GF_SECURITY_ADMIN_PASSWORD 2>/dev/null)}
+    if [ -z "$password" ]; then
+        fail "Grafana 관리자 비밀번호를 얻지 못했다 (GRAFANA_ADMIN_PASSWORD를 설정하거나 grafana 컨테이너를 띄운다)"
+    elif ! response=$(curl -fsS -m 5 -u "admin:${password}" "$GRAFANA_URL/api/v1/provisioning/alert-rules" 2>/dev/null); then
+        fail "Grafana API 호출에 실패했다 (주소나 비밀번호를 확인한다)"
     else
-        fail "알림 규칙이 ${count}개다 (기대 ${EXPECTED_ALERT_RULES}개 이상)"
+        count=$(printf '%s' "$response" | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)
+        if [ "$count" -ge "$EXPECTED_ALERT_RULES" ]; then
+            pass "알림 규칙 ${count}개"
+        else
+            fail "알림 규칙이 ${count}개다 (기대 ${EXPECTED_ALERT_RULES}개 이상)"
+        fi
     fi
 fi
 
