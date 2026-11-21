@@ -1,0 +1,19 @@
+services:
+  mysql:
+    ports: !reset []
+    restart: unless-stopped
+
+  worker:
+    profiles: !reset []
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+    restart: unless-stopped
+
+  prometheus:
+    restart: unless-stopped
+
+  grafana:
+    restart: unless-stopped
+
+  node-exporter:
+    restart: unless-stopped
