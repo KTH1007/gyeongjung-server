@@ -1,0 +1,7 @@
+services:
+  grafana:
+    environment:
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:?.env에 DISCORD_WEBHOOK_URL을 설정한다}
+      ENVIRONMENT_NAME: ${ENVIRONMENT_NAME:-local}
+    volumes:
+      - ./ops/grafana/alerting:/etc/grafana/provisioning/alerting:ro
