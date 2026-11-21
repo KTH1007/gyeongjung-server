@@ -38,14 +38,17 @@ class RequestLogFilter extends OncePerRequestFilter {
         MDC.put(REQUEST_ID_KEY, requestId);
         response.setHeader(REQUEST_ID_HEADER, requestId);
         long startNanos = System.nanoTime();
+        // 예외가 필터 밖으로 전파되면 컨테이너가 필터를 나간 뒤에 500을 만들어서, 그때까지 응답 상태는 기본값 200이다
+        int status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
         try {
             chain.doFilter(request, response);
+            status = response.getStatus();
         } finally {
             log.info(
                     "{} {} {} {}ms device={}",
                     request.getMethod(),
                     request.getRequestURI(),
-                    response.getStatus(),
+                    status,
                     (System.nanoTime() - startNanos) / NANOS_PER_MILLI,
                     safeHeader(request, DEVICE_ID_HEADER));
             MDC.remove(REQUEST_ID_KEY);

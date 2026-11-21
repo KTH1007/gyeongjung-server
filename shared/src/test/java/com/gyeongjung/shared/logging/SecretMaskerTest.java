@@ -90,6 +90,42 @@ class SecretMaskerTest {
     }
 
     @Test
+    void 서울_호스트의_대소문자가_달라도_키를_가린다() {
+        // given
+        String text = "http://swopenAPI.seoul.go.kr/api/subway/KEY1/json/x";
+
+        // when
+        String masked = SecretMasker.mask(text);
+
+        // then
+        assertThat(masked).isEqualTo("http://swopenAPI.seoul.go.kr/api/subway/***/json/x");
+    }
+
+    @Test
+    void 디스코드_호스트의_대소문자가_달라도_웹훅을_가린다() {
+        // given
+        String text = "https://DISCORD.COM/api/webhooks/123/tok";
+
+        // when
+        String masked = SecretMasker.mask(text);
+
+        // then
+        assertThat(masked).isEqualTo("https://DISCORD.COM/api/webhooks/***");
+    }
+
+    @Test
+    void 버전_경로가_있는_디스코드_웹훅도_가린다() {
+        // given
+        String text = "https://discord.com/api/v10/webhooks/123/tok";
+
+        // when
+        String masked = SecretMasker.mask(text);
+
+        // then
+        assertThat(masked).isEqualTo("https://discord.com/api/v10/webhooks/***");
+    }
+
+    @Test
     void 비밀이_없는_문자열은_그대로_둔다() {
         // given
         String text = "폴링 성공: 이벤트 26건 저장";
