@@ -1,5 +1,19 @@
 server:
+  port: -1                      # worker는 사용자 요청을 받지 않는다. api 역할은 계획 2에서 SERVER_PORT=8080으로 연다
   shutdown: graceful
+
+management:
+  server:
+    port: 8081
+    address: 127.0.0.1          # 기본은 이 머신에서만 접근한다. 컨테이너는 MANAGEMENT_SERVER_ADDRESS=0.0.0.0로 연다
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+      role: ${app.role}
 
 logging:
   file:
