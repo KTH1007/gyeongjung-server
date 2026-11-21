@@ -69,6 +69,9 @@ services:
     image: grafana/grafana-oss:13.0.2
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?.env에 GRAFANA_ADMIN_PASSWORD를 설정한다}
+      # Grafana는 프로비저닝 파일이 사라져도 DB에 올라간 규칙과 contact point를 지우지 않는다.
+      # 알림 오버레이를 뺀 채 같은 볼륨을 쓰면 규칙이 계속 평가되어 발송되므로 엔진은 기본으로 끈다.
+      GF_UNIFIED_ALERTING_ENABLED: "false"
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
