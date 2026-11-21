@@ -180,6 +180,7 @@ class RequestLogFilterTest {
                 .isInstanceOf(ServletException.class);
         assertThat(MDC.get("requestId")).isNull();
         assertThat(appender.list).hasSize(1);
+        assertThat(lastLog()).startsWith("GET /api/v1/status 500 ");
     }
 
     private String lastLog() {

@@ -15,7 +15,8 @@ RUN --mount=type=cache,target=/root/.gradle \
     && java -Djarmode=tools -jar app/build/libs/app.jar extract --layers --destination /extracted
 
 FROM eclipse-temurin:25-jre
-ENV TZ=UTC
+ENV TZ=UTC \
+    LOGGING_FILE_NAME=/var/log/gyeongjung/gyeongjung.log
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --no-create-home app \
     && mkdir -p /var/log/gyeongjung \
