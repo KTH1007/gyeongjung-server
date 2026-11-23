@@ -12,5 +12,7 @@ out/
 !.env.example
 *.log
 logs/
+# DB 백업 덤프. 실제 데이터가 들어 있어서 저장소에 올라가면 안 된다
+*.sql.gz
 HELP.md
 .superpowers/

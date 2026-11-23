@@ -13,7 +13,9 @@ updates:
       prefix: "chore(deps)"
 
   - package-ecosystem: docker
-    directory: /
+    directories:
+      - /
+      - /ops/backup
     schedule:
       interval: weekly
       day: monday
@@ -26,6 +28,7 @@ updates:
     ignore:
       - dependency-name: eclipse-temurin
         update-types: ["version-update:semver-major"]
+      - dependency-name: mysql
 
   - package-ecosystem: docker-compose
     directory: /
@@ -40,6 +43,9 @@ updates:
       prefix: "chore(deps)"
     ignore:
       - dependency-name: mysql
+      # 앱의 Flyway는 Boot가 정하므로 CLI만 메이저를 올리지 않는다. 12.x 안의 갱신은 받고 FlywayCliVersionTest가 어긋남을 잡는다.
+      - dependency-name: flyway/flyway
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
