@@ -7,7 +7,8 @@ cd "$(dirname "$0")/../../.."
 
 # compose가 파일 전체의 필수 변수를 검사하므로 이 시험에 안 쓰는 값은 더미로 채운다.
 export DB_USERNAME=${DB_USERNAME:-test} DB_PASSWORD=${DB_PASSWORD:-test} GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-test}
-DC="docker compose -f docker-compose.yml -f docker-compose.nginx-test.yml --profile proxy"
+# 개발 스택(mysql 등)과 같은 프로젝트면 끝날 때 down이 개발 환경까지 내리므로 시험 전용 프로젝트 이름을 쓴다.
+DC="docker compose -p gyeongjung-nginx-test -f docker-compose.yml -f docker-compose.nginx-test.yml --profile proxy"
 URL=http://127.0.0.1:8088
 failures=0
 
@@ -29,7 +30,7 @@ log_line() {
 header() { tr -d '\r' < "$1" | awk -F': ' -v k="$2" 'tolower($1)==k{print $2}'; }
 
 echo "[0] 기동"
-$DC up -d >/dev/null 2>&1 || fail "compose가 뜨지 않는다"
+$DC up -d nginx api >/dev/null 2>&1 || fail "compose가 뜨지 않는다"
 for _ in $(seq 1 30); do
     [ "$(curl -s -m 2 -o /dev/null -w '%{http_code}' "$URL/healthz")" = 200 ] && break
     sleep 1
@@ -52,7 +53,8 @@ echo "[2] 라운드로빈 (요청 20번)"
 counts=$(stub_names 20)
 kinds=$(echo "$counts" | grep -c .)
 fewest=$(echo "$counts" | awk 'NR==1||$1<m{m=$1} END{print m+0}')
-if [ "$kinds" -eq 2 ] && [ "$fewest" -ge 8 ]; then pass "두 인스턴스에 번갈아 분배 ($(echo "$counts" | tr -s ' \n' ' '))"; else fail "분배가 이상하다: $(echo "$counts" | tr -s ' \n' ' ')"; fi
+total=$(echo "$counts" | awk '{s+=$1} END{print s+0}')
+if [ "$kinds" -eq 2 ] && [ "$fewest" -ge 8 ] && [ "$total" -eq 20 ]; then pass "두 인스턴스에 번갈아 분배 ($(echo "$counts" | tr -s ' \n' ' '))"; else fail "분배가 이상하다 (응답 ${total}/20): $(echo "$counts" | tr -s ' \n' ' ')"; fi
 
 echo "[3] 요청 ID와 헤더 전달 (클라이언트가 보낸 값은 덮어써야 한다)"
 hdr=$(mktemp)
@@ -75,26 +77,49 @@ if echo "$line" | grep -q 'ip=203.0.113.7 '; then pass "접근 로그에 CF-Conn
 if echo "$resp" | grep -q 'xff=203.0.113.7 '; then pass "api에는 복원된 IP가 X-Forwarded-For로 간다"; else fail "api가 받은 X-Forwarded-For가 다르다: $resp"; fi
 if echo "$line" | grep -Eq 'rid=[0-9a-f]{32} .* 200 rt=[0-9.]+ urt=[0-9.]+'; then pass "접근 로그에 상태, 처리 시간, 업스트림 응답 시간이 있다"; else fail "접근 로그 형식이 다르다: $line"; fi
 rm -f "$hdr"
-# 시험에서는 사설 대역을 더 믿게 했으므로, 운영 설정이 공개 대역만 믿는지는 파일로 확인한다.
-if grep -E '^\s*set_real_ip_from' ops/nginx/nginx.conf 2>/dev/null | grep -qE ' (10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|0\.0\.0\.0|::/0|::1|fc|fd|fe80)'; then
-    fail "운영 nginx.conf가 사설 대역이나 전체를 신뢰한다"
+# 시험에서는 사설 대역을 더 믿게 했으므로, 운영 설정이 Cloudflare 대역만 믿는지는 파일을 목록과 정확히 비교해서 확인한다.
+# 대역을 갱신할 때는 nginx.conf와 이 목록을 같이 고친다. 출처: https://www.cloudflare.com/ips-v4/ , https://www.cloudflare.com/ips-v6/
+expected_trust="173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32"
+actual_sorted=$(grep -E '^\s*set_real_ip_from' ops/nginx/nginx.conf 2>/dev/null | awk '{print $2}' | tr -d ';' | sort)
+expected_sorted=$(printf '%s\n' $expected_trust | sort)
+extra=$(comm -13 <(echo "$expected_sorted") <(echo "$actual_sorted") | tr '\n' ' ')
+missing=$(comm -23 <(echo "$expected_sorted") <(echo "$actual_sorted") | tr '\n' ' ')
+if [ -z "$actual_sorted" ]; then
+    fail "운영 nginx.conf에 set_real_ip_from이 없다"
+elif [ -n "$extra" ] || [ -n "$missing" ]; then
+    fail "운영 nginx.conf의 신뢰 대역이 Cloudflare 목록과 다르다 (추가: ${extra:-없음}/ 누락: ${missing:-없음})"
 else
-    n=$(grep -cE '^\s*set_real_ip_from' ops/nginx/nginx.conf 2>/dev/null)
-    if [ "${n:-0}" -ge 1 ]; then pass "운영 nginx.conf는 공개 대역(${n}개)만 신뢰한다"; else fail "운영 nginx.conf에 set_real_ip_from이 없다"; fi
+    pass "운영 nginx.conf는 Cloudflare 대역 $(echo "$actual_sorted" | grep -c .)개만 정확히 신뢰한다"
 fi
 
-echo "[5] 한쪽 api가 죽었을 때"
 id_list=$($DC ps -q api 2>/dev/null)
 id1=$(echo "$id_list" | sed -n 1p)
 id2=$(echo "$id_list" | sed -n 2p)
 if [ -z "$id1" ] || [ -z "$id2" ]; then fail "api 인스턴스가 2개가 아니다"; fi
+
+echo "[5] 응답이 멈춘 api (연결은 받지만 응답을 안 줄 때)"
+# pause하면 프로세스가 얼어서 연결은 커널이 받아 주지만 응답은 오지 않는다. 연결 시간 초과가 아니라 읽기 시간 초과가 걸리는 경우다.
+docker pause "$id1" >/dev/null 2>&1
+ok=0
+slowest=0
+for _ in $(seq 1 8); do
+    r=$(curl -s -m 12 -o /dev/null -w '%{http_code} %{time_total}' "$URL/")
+    [ "${r%% *}" = 200 ] && ok=$((ok + 1))
+    slowest=$(echo "${r##* } $slowest" | awk '{print ($1 > $2) ? $1 : $2}')
+done
+docker unpause "$id1" >/dev/null 2>&1
+if [ "$ok" -eq 8 ] && [ "$(echo "$slowest" | awk '{print ($1 < 9) ? 1 : 0}')" -eq 1 ]; then pass "멈춘 인스턴스가 있어도 8번 모두 200 (가장 느린 응답 ${slowest}초)"; else fail "성공 $ok/8, 가장 느린 응답 ${slowest}초"; fi
+# 다음 시험이 영향받지 않게 멈췄던 인스턴스가 다시 분배 대상이 될 때까지 기다린다.
+for _ in $(seq 1 40); do [ "$(stub_names 6 | grep -c .)" -eq 2 ] && break; sleep 1; done
+
+echo "[6] 한쪽 api가 죽었을 때"
 docker stop "$id1" >/dev/null 2>&1
 ok=0
 for _ in $(seq 1 12); do [ "$(http_status)" = 200 ] && ok=$((ok + 1)); done
 kinds=$(stub_names 6 | grep -c .)
 if [ "$ok" -eq 12 ] && [ "$kinds" -eq 1 ]; then pass "한쪽이 죽어도 12번 모두 200, 남은 인스턴스가 처리"; else fail "성공 $ok/12, 응답한 인스턴스 ${kinds}개"; fi
 
-echo "[6] 둘 다 죽었을 때"
+echo "[7] 둘 다 죽었을 때"
 docker stop "$id2" >/dev/null 2>&1
 hdr=$(mktemp); out=$(mktemp)
 code=$(curl -s -m 20 -D "$hdr" -o "$out" -w '%{http_code}' "$URL/")
@@ -105,7 +130,7 @@ if [[ "$(header "$hdr" x-request-id)" =~ ^[0-9a-f]{32}$ ]]; then pass "오류 �
 if [ "$(curl -s -m 3 -o /dev/null -w '%{http_code}' "$URL/healthz")" = 200 ]; then pass "api가 없어도 /healthz는 200"; else fail "api가 없을 때 /healthz가 200이 아니다"; fi
 rm -f "$hdr" "$out"
 
-echo "[7] 복구 (다시 뜬 api를 자동으로 찾는지)"
+echo "[8] 복구 (다시 뜬 api를 자동으로 찾는지)"
 docker start "$id1" "$id2" >/dev/null 2>&1
 recovered=0
 for _ in $(seq 1 60); do
