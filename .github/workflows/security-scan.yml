@@ -1,0 +1,75 @@
+name: security-scan
+
+# 코드가 바뀌지 않아도 새 CVE가 생기므로 주 1회 다시 검사한다 (월요일 09:00 KST).
+on:
+  schedule:
+    - cron: "0 0 * * 1"
+  workflow_dispatch:
+  # 이 파일을 고치는 PR은 스케줄을 기다리지 않고 바로 돌려 본다.
+  pull_request:
+    paths:
+      - .github/workflows/security-scan.yml
+
+permissions:
+  contents: read
+
+jobs:
+  app-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: docker build -t gyeongjung-server:ci .
+      # ci.yml과 같은 설정이다. Dependabot이 version 값은 못 올리므로 trivy-action을 올릴 때 두 파일을 같이 본다.
+      - name: 이미지 취약점 스캔
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: gyeongjung-server:ci
+          version: v0.76.2
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+  # compose에 적힌 서드파티 이미지를 그대로 읽어서 목록이 compose와 어긋나지 않게 한다.
+  third-party-images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      list: ${{ steps.list.outputs.list }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: list
+        env:
+          DB_USERNAME: ci
+          DB_PASSWORD: ci
+          GRAFANA_ADMIN_PASSWORD: ci
+        run: |
+          list=$(docker compose config --images | grep -v '^gyeongjung-server$' | sort -u | jq -R . | jq -sc .)
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+
+  third-party-scan:
+    needs: third-party-images
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.third-party-images.outputs.list) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: 이미지 취약점 스캔 (${{ matrix.image }})
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ matrix.image }}
+          version: v0.76.2
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
