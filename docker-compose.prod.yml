@@ -17,3 +17,9 @@ services:
 
   node-exporter:
     restart: unless-stopped
+
+  nginx:
+    profiles: !reset []
+    ports: !override
+      - "80:80"
+    restart: unless-stopped
