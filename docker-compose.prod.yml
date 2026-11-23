@@ -23,3 +23,7 @@ services:
     ports: !override
       - "80:80"
     restart: unless-stopped
+
+  backup:
+    profiles: !reset []
+    restart: unless-stopped
