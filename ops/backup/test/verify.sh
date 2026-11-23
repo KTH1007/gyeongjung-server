@@ -72,6 +72,13 @@ seed 501 510
 live=$(sql "SELECT COUNT(*) FROM raw_position_event")
 out=$(./ops/backup/restore-drill.sh "$TMP/dump.sql.gz" 2>&1)
 if echo "$out" | grep -q "raw_position_event 행 수: ${before}\$" && [ "${live:-0}" -gt "${before:-0}" ] 2>/dev/null; then pass "백업 뒤에 쌓인 행은 복원본에 없다 (현재 ${live}, 복원 ${before})"; else fail "복원본에 백업 뒤 행이 섞였다"; fi
+# 테이블이 하나도 없는 덤프가 통과하면 복원이 안 된 백업도 "성공"으로 읽힌다
+printf -- '-- Dump completed\n' | gzip > "$TMP/empty.sql.gz"
+out=$(./ops/backup/restore-drill.sh "$TMP/empty.sql.gz" 2>&1); code=$?
+if [ "$code" -eq 1 ] && echo "$out" | grep -q "행 수를 읽지 못했다" && ! echo "$out" | grep -q "복구 리허설 성공"; then pass "테이블이 없는 덤프는 리허설이 실패한다"; else fail "테이블이 없는 덤프가 통과했거나 다른 이유로 실패했다 (종료 ${code}): $(echo "$out" | tail -2)"; fi
+# 마이그레이션 폴더를 못 찾으면 기본 폴더로 바뀌어 엉뚱한 마이그레이션을 시험하고도 성공하므로 시작 전에 멈춰야 한다
+out=$(MIGRATIONS_DIR="$TMP/no-such-migrations" ./ops/backup/restore-drill.sh "$TMP/dump.sql.gz" 2>&1); code=$?
+if [ "$code" -eq 2 ] && echo "$out" | grep -q "마이그레이션 폴더를 찾을 수 없다" && ! echo "$out" | grep -qE '\[1/3\]|복구 리허설 성공'; then pass "없는 마이그레이션 폴더를 주면 일회용 DB를 띄우기 전에 멈춘다"; else fail "없는 폴더로 리허설이 진행됐거나 다른 이유로 실패했다 (종료 ${code}): $(echo "$out" | tail -2)"; fi
 
 echo "[4] 마이그레이션 리허설과 규칙"
 mkdir -p "$TMP/mig_new" "$TMP/mig_bad"
@@ -102,6 +109,14 @@ box /ops/backup/backup.sh >/dev/null 2>&1
 if [ "$planted" -eq 1 ] && ! box test -e /backups/gyeongjung-20000101-000000.sql.gz && ! box test -e /backups/gyeongjung-19990101-000000.sql.gz; then pass "15일 지난 백업은 지워진다"; else fail "시험용 오래된 파일을 만들지 못했거나 15일 지난 백업이 남았다 (planted=${planted})"; fi
 if box test -e /backups/gyeongjung-20000102-000000.sql.gz; then pass "13일 된 백업은 남는다"; else fail "13일 된 백업이 지워졌다"; fi
 if box test -e /backups/notes.txt; then pass "백업 파일이 아닌 파일은 건드리지 않는다"; else fail "백업과 무관한 파일이 지워졌다"; fi
+# 보관 기간에 숫자가 아닌 값을 주면 find가 실패한다. 오래된 백업이 조용히 쌓이지 않게 알려야 하고, 새 백업과 서버 밖 복사는 그대로여야 한다
+sleep 1
+hooks_before=$(hooks)
+before_file=$(newest_backup)
+$DC exec -T -e BACKUP_RETENTION_DAYS=abc -e OFFSITE_URL=/tmp/offsite-retention backup /ops/backup/backup.sh >/dev/null 2>&1; code=$?
+after_file=$(newest_backup)
+if [ "$code" -ne 0 ] && [ "$(hooks)" -gt "$hooks_before" ] && tail -1 "$HOOKS" | grep -q "보관 정리 실패"; then pass "보관 정리가 실패하면 알림이 오고 종료 코드가 0이 아니다"; else fail "보관 정리 실패가 조용히 지나갔다 (종료 ${code}): $(tail -1 "$HOOKS")"; fi
+if [ -n "$after_file" ] && [ "$after_file" != "$before_file" ] && box test -e "/tmp/offsite-retention/${after_file##*/}"; then pass "보관 정리가 실패해도 새 백업은 저장되고 서버 밖으로도 복사된다"; else fail "보관 정리 실패 때 새 백업이 없거나 서버 밖 복사가 빠졌다 (${before_file} → ${after_file})"; fi
 
 echo "[7] 서버 밖 복사"
 out=$(box /ops/backup/backup.sh 2>&1)

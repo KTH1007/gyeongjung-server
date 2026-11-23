@@ -16,7 +16,9 @@ gzip -t "$dump" || { echo "백업 파일이 깨졌다: ${dump}" >&2; exit 1; }
 # compose가 파일 전체의 필수 변수를 검사하므로 리허설에 안 쓰는 값은 더미로 채운다.
 export DB_USERNAME=${DB_USERNAME:-drill} DB_PASSWORD=${DB_PASSWORD:-drill} GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-drill}
 export DRILL_DB_PASSWORD=${DRILL_DB_PASSWORD:-drill-throwaway}
-MIGRATIONS_DIR=$(cd "${MIGRATIONS_DIR:-app/src/main/resources/db/migration}" && pwd)
+# 경로를 못 풀어 빈 값이 되면 compose가 기본 폴더로 바꿔서 엉뚱한 마이그레이션을 시험하고도 성공하므로 여기서 멈춘다.
+src_dir=${MIGRATIONS_DIR:-app/src/main/resources/db/migration}
+MIGRATIONS_DIR=$(cd "$src_dir" && pwd) || { echo "마이그레이션 폴더를 찾을 수 없다: ${src_dir}" >&2; exit 2; }
 export MIGRATIONS_DIR
 # 서버의 COMPOSE_FILE(prod, 알림 오버레이)이 섞이지 않게 기본 파일만 명시하고, 라이브 프로젝트와 겹치지 않는 이름을 쓴다.
 DC="docker compose -p gyeongjung-drill-$$ -f docker-compose.yml --profile tools"
@@ -32,7 +34,11 @@ if ! gunzip -c "$dump" | $DC exec -T -e MYSQL_PWD="$DRILL_DB_PASSWORD" drill-mys
     echo "복원에 실패했다" >&2
     exit 1
 fi
-rows=$($DC exec -T -e MYSQL_PWD="$DRILL_DB_PASSWORD" drill-mysql mysql -uroot gyeongjung -N -e "SELECT COUNT(*) FROM raw_position_event" | tr -d '\r')
+# 테이블이 없는 덤프는 아래 Flyway가 빈 스키마에 V1을 새로 적용해 버려서, 여기서 막지 않으면 복원이 안 된 백업도 성공으로 끝난다.
+if ! rows=$($DC exec -T -e MYSQL_PWD="$DRILL_DB_PASSWORD" drill-mysql mysql -uroot gyeongjung -N -e "SELECT COUNT(*) FROM raw_position_event" | tr -d '\r'); then
+    echo "복원한 DB에서 raw_position_event 행 수를 읽지 못했다 (백업에 테이블이 없다)" >&2
+    exit 1
+fi
 echo "raw_position_event 행 수: ${rows}"
 
 echo "[3/3] 현재 코드의 마이그레이션을 복원본에 적용 (${MIGRATIONS_DIR})"

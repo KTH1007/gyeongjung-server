@@ -68,12 +68,20 @@ metrics_tmp="${METRICS_DIR}/.backup.prom.$$"
 } > "$metrics_tmp" && mv "$metrics_tmp" "${METRICS_DIR}/backup.prom" || fail "지표를 기록하지 못했다 (백업 파일은 저장됨)"
 
 # 새 백업이 확인된 뒤에만 오래된 것을 지운다. 이름 규칙에 맞는 파일만 지운다.
-deleted=$(find "$BACKUP_DIR" -maxdepth 1 -type f -name 'gyeongjung-*.sql.gz' -mtime +"$RETENTION_DAYS" -print -delete | wc -l)
-log "보관 기간(${RETENTION_DAYS}일)이 지난 백업 ${deleted}개 삭제"
+# 정리가 실패해도 이미 저장한 새 백업과 서버 밖 복사는 그대로 하고, 알린 뒤 마지막에 0이 아닌 코드로 끝낸다.
+exit_code=0
+deleted=$(find "$BACKUP_DIR" -maxdepth 1 -type f -name 'gyeongjung-*.sql.gz' -mtime +"$RETENTION_DAYS" -print -delete | wc -l); retention_code=$?
+if [ "$retention_code" -eq 0 ]; then
+    log "보관 기간(${RETENTION_DAYS}일)이 지난 백업 ${deleted}개 삭제"
+else
+    exit_code=1
+    log "보관 정리 실패: find 종료 코드 ${retention_code}"
+    notify "보관 정리 실패: find 종료 코드 ${retention_code}. 오래된 백업이 쌓일 수 있다. 새 백업은 저장됨"
+fi
 
 if [ -z "$OFFSITE_URL" ]; then
     log "서버 밖 복사 건너뜀 (OFFSITE_URL이 비어 있음)"
-    exit 0
+    exit "$exit_code"
 fi
 # 업로드 전용 키는 버킷을 만들거나 확인할 권한이 없으므로 그 확인을 건너뛴다. copyto는 올리기만 하고 지우지 않는다.
 export RCLONE_S3_NO_CHECK_BUCKET=true
@@ -85,3 +93,4 @@ else
     notify "서버 밖 복사 실패: ${name} (rclone 종료 코드 ${code}). 서버 안 백업은 저장됨"
     exit 1
 fi
+exit "$exit_code"
