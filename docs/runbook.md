@@ -74,7 +74,11 @@
    INSERT INTO collection_gap (started_at, ended_at, reason, created_at, updated_at)
    VALUES ('2026-11-24 01:10:00', NOW(3), 'restore-from-backup', NOW(3), NOW(3));
    ```
-8. **다시 시작한다.** `docker compose start worker`. 이어서 `./ops/smoke.sh`로 상태를 확인한다.
+8. **다시 시작한다.**
+   - 데이터만 복구했다면 현재 이미지 그대로: `docker compose start worker`
+   - 비호환 마이그레이션을 되돌렸다면 **이전 이미지로** 시작한다. 현재 이미지를 시작하면 복원한 DB에 문제의 마이그레이션을 다시 적용한다. 이전 이미지를 지정하는 명령은 배포 방식을 정하는 #14에서 이 자리에 적는다.
+
+   시작한 뒤 `./ops/smoke.sh`로 상태를 확인한다.
 9. **꺼낸 파일을 지운다.** `rm /tmp/restore.sql.gz` (실제 데이터가 들어 있다)
 
 ## 정기 점검 (월 1회)
