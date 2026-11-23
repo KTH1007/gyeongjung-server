@@ -194,3 +194,50 @@ groups:
                 - evaluator:
                     type: lt
                     params: [15]
+
+  # 백업이 안 도는 경우를 잡는다. worker 규칙과 달리 지표가 아예 없는 것(백업이 한 번도 안 돌았거나 컨테이너가 죽음)이
+  # 바로 알려야 할 상황이라 noDataState를 Alerting으로 둔다.
+  - orgId: 1
+    name: backup
+    folder: 운영
+    interval: 1m
+    rules:
+      - uid: backup-stale
+        title: 백업이 12시간 넘게 성공하지 않음
+        condition: C
+        for: 5m
+        noDataState: Alerting
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          # 지표가 없으면 쿼리가 9999를 돌려줘서 항상 값이 있는 상태로 발화한다. NoData 상태의 알림은 요약에 이전 값이 남아
+          # "방금 성공했다"로 읽힐 수 있어서 값으로 "지표 없음"을 구분한다.
+          summary: '{{ if $values.B }}{{ if gt $values.B.Value 9000.0 }}백업 지표가 없습니다. backup 컨테이너가 안 도는 것일 수 있습니다{{ else }}마지막 성공한 백업이 {{ printf "%.1f" $values.B.Value }}시간 전입니다{{ end }}{{ else }}백업 지표를 읽지 못했습니다{{ end }}'
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: '(time() - backup_last_success_timestamp_seconds) / 3600 or on() vector(9999)'
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [12]

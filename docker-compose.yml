@@ -105,12 +105,71 @@ services:
     mem_limit: 64m
     logging: *default-logging
 
+  backup:
+    profiles: ["backup"]
+    build: ./ops/backup
+    image: gyeongjung-backup
+    entrypoint: ["bash", "/ops/backup/backup-loop.sh"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql
+      DB_NAME: gyeongjung
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+      ENVIRONMENT_NAME: ${ENVIRONMENT_NAME:-local}
+      OFFSITE_URL: ${OFFSITE_URL:-}
+      RCLONE_CONFIG_OFFSITE_TYPE: ${RCLONE_CONFIG_OFFSITE_TYPE:-}
+      RCLONE_CONFIG_OFFSITE_PROVIDER: ${RCLONE_CONFIG_OFFSITE_PROVIDER:-}
+      RCLONE_CONFIG_OFFSITE_ENDPOINT: ${RCLONE_CONFIG_OFFSITE_ENDPOINT:-}
+      RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID: ${RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID:-}
+      RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY: ${RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY:-}
+      BACKUP_RETENTION_DAYS: "14"
+      TZ: UTC
+    volumes:
+      - ./ops/backup:/ops/backup:ro
+      - backup-data:/backups
+      - backup-metrics:/metrics
+    mem_limit: 128m
+    stop_grace_period: 30s
+    logging: *default-logging
+
+  flyway:
+    profiles: ["tools"]
+    # redgate/flyway는 amd64만 있어서 arm64 맥에서 못 돌린다. flyway/flyway는 둘 다 지원한다.
+    image: flyway/flyway:12.11.0
+    volumes:
+      - ${MIGRATIONS_DIR:-./app/src/main/resources/db/migration}:/flyway/sql:ro
+
+  drill-mysql:
+    profiles: ["tools"]
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: gyeongjung
+      MYSQL_ROOT_PASSWORD: ${DRILL_DB_PASSWORD:-drill-throwaway}
+      TZ: UTC
+    command:
+      - --default-time-zone=+00:00
+      - --character-set-server=utf8mb4
+    tmpfs:
+      - /var/lib/mysql
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${DRILL_DB_PASSWORD:-drill-throwaway}"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
   node-exporter:
     image: prom/node-exporter:v1.13.1
     command:
       - --path.rootfs=/host
+      - --collector.textfile.directory=/metrics
     volumes:
       - /:/host:ro
+      - backup-metrics:/metrics:ro
     mem_limit: 64m
     logging: *default-logging
 
@@ -119,3 +178,5 @@ volumes:
   worker-logs:
   prometheus-data:
   grafana-data:
+  backup-data:
+  backup-metrics:
