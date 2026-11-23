@@ -49,7 +49,7 @@ jobs:
           DB_PASSWORD: ci
           GRAFANA_ADMIN_PASSWORD: ci
         run: |
-          list=$(docker compose config --images | grep -v '^gyeongjung-server$' | sort -u | jq -R . | jq -sc .)
+          list=$(docker compose --profile '*' config --images | grep -v '^gyeongjung-server$' | sort -u | jq -R . | jq -sc .)
           echo "list=$list" >> "$GITHUB_OUTPUT"
 
   third-party-scan:
