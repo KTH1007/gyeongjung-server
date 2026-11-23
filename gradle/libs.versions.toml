@@ -1,6 +1,6 @@
 [versions]
 spring-boot = "4.2.0"
-spring-modulith = "2.1.2"
+spring-modulith = "2.2.0"
 archunit = "1.5.1"
 wiremock = "3.13.2"
 spotless = "8.11.0"
