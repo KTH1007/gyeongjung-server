@@ -1,0 +1,18 @@
+# 시험 전용. 백업을 개발 스택과 분리된 프로젝트에서 시험한다 (사용: ops/backup/test/verify.sh).
+# 시험 DB는 호스트 포트를 열지 않고, 디스코드 알림은 호스트에서 도는 가짜 수신기로 보낸다.
+services:
+  mysql:
+    ports: !reset []
+
+  backup:
+    environment:
+      DISCORD_WEBHOOK_URL: http://host.docker.internal:18099/hook
+      ENVIRONMENT_NAME: test
+      OFFSITE_URL: ""
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - backup-offsite-test:/offsite
+
+volumes:
+  backup-offsite-test:
