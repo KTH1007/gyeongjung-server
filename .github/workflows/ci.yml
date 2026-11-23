@@ -35,3 +35,14 @@ jobs:
         with:
           persist-credentials: false
       - run: docker build -t gyeongjung-server:ci .
+      # 태그가 아니라 커밋 SHA로 고정한다. 2026-03 공급망 사고(GHSA-69fq-xp46-6x23)에서 태그가 바뀐 적이 있다.
+      # 수정 버전이 없는 취약점까지 막으면 머지가 멈추므로 ignore-unfixed를 켠다.
+      - name: 이미지 취약점 스캔
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: gyeongjung-server:ci
+          version: v0.76.2
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
