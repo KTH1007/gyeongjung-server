@@ -58,14 +58,15 @@ class TestFixturesConventionTest {
     void import_control에_AbstractMySqlIT_예외가_없다() throws IOException {
         // given
         String importControl =
-                Files.readString(repositoryRoot().resolve("config/checkstyle/import-control.xml"));
+                Files.readString(
+                        RepositoryRoot.path().resolve("config/checkstyle/import-control.xml"));
 
         // when & then
         assertThat(importControl).doesNotContain("AbstractMySqlIT");
     }
 
     private static List<Path> javaSources() throws IOException {
-        Path root = repositoryRoot();
+        Path root = RepositoryRoot.path();
         List<Path> sources = new ArrayList<>();
         for (String module : MODULES) {
             Path src = root.resolve(module).resolve("src");
@@ -81,11 +82,5 @@ class TestFixturesConventionTest {
 
     private static String normalized(Path path) {
         return path.toString().replace('\\', '/');
-    }
-
-    // Gradle은 모듈 폴더에서, IDE는 저장소 루트에서 시험을 돌릴 수 있어서 둘 다 찾는다.
-    private static Path repositoryRoot() {
-        Path fromModule = Path.of("..");
-        return Files.exists(fromModule.resolve("settings.gradle.kts")) ? fromModule : Path.of(".");
     }
 }
