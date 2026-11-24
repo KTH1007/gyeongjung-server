@@ -43,6 +43,9 @@ services:
       DB_URL: jdbc:mysql://mysql:3306/gyeongjung
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
+      # 기본값은 application.yml과 같다. 서버 .env의 DB_POOL_MAX_SIZE 등으로 덮어쓴다.
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${DB_POOL_MAX_SIZE:-5}
+      SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: ${DB_CONNECTION_TIMEOUT_MS:-3000}
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=60 -XX:+ExitOnOutOfMemoryError"
       MANAGEMENT_SERVER_ADDRESS: 0.0.0.0
     volumes:

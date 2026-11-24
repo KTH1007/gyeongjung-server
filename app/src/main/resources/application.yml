@@ -41,6 +41,13 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+  datasource:
+    hikari:
+      # 기본값(최대 10, 대기 30초)이면 DB가 느려질 때 요청이 30초씩 쌓여 스레드가 묶인다. 2코어 서버에서
+      # HikariCP 공식(코어 수 × 2 + 디스크 수)에 가까운 5로 줄이고, 가득 차면 3초 안에 실패시킨다.
+      # minimum-idle은 일부러 두지 않는다. 기본이 최대와 같은 고정 크기라서 연결을 늘렸다 줄이는 비용이 없다.
+      maximum-pool-size: 5
+      connection-timeout: 3000
   flyway:
     enabled: true
 
