@@ -1,6 +1,15 @@
 server:
   port: -1                      # worker는 사용자 요청을 받지 않는다. api 역할은 계획 2에서 SERVER_PORT=8080으로 연다
   shutdown: graceful
+  tomcat:
+    # worker는 웹 포트를 닫아서 지금은 효과가 없다. api가 생기면 적용되는 과부하 한도의 자리이고 값은 측정 전 제안이다(계획 2에서 확정).
+    # 환경변수 SERVER_TOMCAT_THREADS_MAX 등으로 덮어쓴다. DB 풀이 5라서 DB를 쓰는 요청은 동시에 5개뿐이므로 스레드를 기본 200개까지 둘 이유가 없다.
+    threads:
+      max: 50
+    # 모든 스레드가 찼을 때 줄 세우는 연결 수. 넘으면 연결을 거절한다
+    accept-count: 50
+    # 한 인스턴스만 남아도 nginx 전체 동시 연결 한도(400)를 혼자 받게 해서 거절은 nginx가 먼저 하게 한다
+    max-connections: 400
 
 management:
   server:
