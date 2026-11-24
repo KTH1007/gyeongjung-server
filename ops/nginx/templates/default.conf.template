@@ -5,14 +5,44 @@ upstream api {
     server api:8080 resolve;
 }
 
+# 과부하 방어(#31). ${LIMIT_*}만 컨테이너가 시작할 때 환경변수 값으로 채워지고 $로 시작하는 nginx 변수는 그대로 둔다.
+# 쓰기 요청만 IP별로 센다. 키가 빈 문자열이면 nginx가 그 요청을 세지 않아서 읽기 요청은 속도 제한에서 빠진다.
+map $request_method $write_limit_key {
+    default "";
+    POST    $binary_remote_addr;
+    PUT     $binary_remote_addr;
+    PATCH   $binary_remote_addr;
+    DELETE  $binary_remote_addr;
+}
+
+# 429에만 Retry-After를 붙인다. 값이 빈 문자열이면 nginx가 헤더를 넣지 않는다.
+# 속도 한도는 토큰이 초 단위로 다시 차므로 1초 뒤면 다시 시도할 수 있다.
+map $status $retry_after {
+    429     1;
+    default "";
+}
+
+# 10m이면 IP 약 16만 개를 담아서 사용자가 늘어도 넉넉하다.
+limit_req_zone  $write_limit_key    zone=write_per_ip:10m rate=${LIMIT_WRITE_RATE}r/s;
+limit_conn_zone $binary_remote_addr zone=conn_per_ip:10m;
+# 모든 요청이 같은 키를 써서 서버 전체의 동시 연결을 센다.
+limit_conn_zone $server_name        zone=conn_total:64k;
+limit_req_status  429;
+limit_conn_status 503;
+# 거절은 접근 로그에 429/503으로 남으므로 오류 로그에 같은 내용을 쏟아내지 않는다.
+limit_req_log_level  notice;
+limit_conn_log_level notice;
+
 server {
     listen 80 default_server;
     server_name _;
 
     # 어느 응답이든 요청 ID가 한 번만 붙게 nginx가 직접 붙이고 업스트림 값은 숨긴다.
     add_header X-Request-ID $request_id always;
+    add_header Retry-After $retry_after always;
 
     # nginx 자체 상태 확인. api가 죽어도 200이라 Docker 헬스체크가 nginx만 본다.
+    # 한도는 아래 location /에만 걸어서 이 경로는 제한하지 않는다.
     location = /healthz {
         access_log off;
         default_type text/plain;
@@ -20,6 +50,11 @@ server {
     }
 
     location / {
+        # burst만큼은 바로 통과시키고 넘으면 즉시 429를 준다. 줄 세워 기다리게 하면(nodelay 없이) 그동안 연결이 묶인다.
+        limit_req zone=write_per_ip burst=${LIMIT_WRITE_BURST} nodelay;
+        limit_conn conn_per_ip ${LIMIT_CONN_PER_IP};
+        limit_conn conn_total ${LIMIT_CONN_TOTAL};
+
         proxy_pass http://api;
         proxy_set_header Host $http_host;
         # 클라이언트가 보낸 값은 믿지 않고 nginx가 만든 ID로 덮어쓴다 (앱 로그의 requestId와 이어진다).
@@ -42,6 +77,7 @@ server {
     }
 
     # nginx가 직접 만든 오류만 JSON으로 바꾼다. 앱이 보낸 오류 본문은 그대로 전달된다(proxy_intercept_errors 꺼짐).
+    error_page 429 /errors/429.json;
     error_page 502 /errors/502.json;
     error_page 503 /errors/503.json;
     error_page 504 /errors/504.json;
