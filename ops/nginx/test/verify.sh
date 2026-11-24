@@ -206,7 +206,8 @@ release
 if [ "$(wait_for_status 203.0.113.53 GET / 200)" = 200 ]; then pass "연결이 풀리면 새 IP도 통과한다"; else fail "연결을 닫았는데 전체 한도가 풀리지 않는다"; fi
 
 echo "[11] 한도 설정 (환경변수)"
-defaults=$(env -u LIMIT_WRITE_RATE -u LIMIT_WRITE_BURST -u LIMIT_CONN_PER_IP -u LIMIT_CONN_TOTAL $DC config 2>/dev/null)
+# 셸 값이 .env보다 우선하므로 빈 값으로 덮어써서 .env에 한도가 있어도 compose의 기본값(${VAR:-5})이 고르게 한다. env -u로 지우면 .env 값을 읽는다.
+defaults=$(LIMIT_WRITE_RATE= LIMIT_WRITE_BURST= LIMIT_CONN_PER_IP= LIMIT_CONN_TOTAL= $DC config 2>/dev/null)
 for pair in LIMIT_WRITE_RATE=5 LIMIT_WRITE_BURST=20 LIMIT_CONN_PER_IP=30 LIMIT_CONN_TOTAL=400; do
     if echo "$defaults" | grep -Eq "^ +${pair%%=*}: \"?${pair#*=}\"?\$"; then pass "환경변수가 없으면 ${pair%%=*}는 ${pair#*=}"; else fail "${pair%%=*}의 기본값이 기대(${pair#*=})와 다르다"; fi
 done

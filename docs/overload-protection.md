@@ -17,11 +17,11 @@
 | `LIMIT_CONN_PER_IP` | 30 | IP당 동시에 처리 중인 요청 수 | `503` |
 | `LIMIT_CONN_TOTAL` | 400 | 서버 전체 동시에 처리 중인 요청 수 | `503` |
 
-- **대상**: 속도 제한은 `POST`, `PUT`, `PATCH`, `DELETE`만 센다. 읽기 요청과 `/healthz`는 제한하지 않는다. 동시 연결 제한은 `/healthz`를 뺀 모든 요청에 건다.
+- **대상**: 속도 제한은 `POST`, `PUT`, `PATCH`, `DELETE`만 센다. 읽기 요청은 속도 제한을 받지 않는다. 동시 연결 제한은 `/healthz`를 뺀 모든 요청에 걸어서 읽기도 센다. 메서드와 상관없이 서버가 동시에 감당할 양을 지키는 장치이고, 이 서비스는 읽기가 대부분이라 읽기를 빼면 서버 전체 한도가 의미 없어지기 때문이다. `/healthz`는 둘 다 받지 않는다.
 - **방식**: nginx `limit_req`의 leaky bucket이다. 처음 한 건과 burst만큼은 바로 통과시키고(`nodelay`), 그 뒤로는 초당 `LIMIT_WRITE_RATE`건만 통과한다. 고정 윈도우의 경계 문제가 없다.
 - **키**: Cloudflare 뒤의 실제 방문자 IP(`CF-Connecting-IP`, Cloudflare 대역에서 온 연결만 믿는다).
 - **상태 저장**: IP별 상태를 공유 메모리에 둔다(`write_per_ip`, `conn_per_ip` 각 10m). nginx 문서 기준 IP 약 16만 개 분량이다. 서로 다른 IP 5만 개가 쓰기 요청을 보낸 뒤 nginx 컨테이너 메모리가 4.8MiB에서 10.9MiB로 늘었다(IP당 약 120바이트, 두 영역 합). 컨테이너 한도는 64MiB다. 영역이 가득 찼을 때의 동작은 시험하지 않았다.
-- **응답**: 공통 오류 형식(`application/problem+json`, `code`)과 `X-Request-ID`가 붙는다. `429`의 `code`는 `TOO_MANY_REQUESTS`, `503`은 `SERVICE_UNAVAILABLE`이다. 거절은 접근 로그에 `429`/`503`으로 남기고 오류 로그에는 쏟아내지 않는다.
+- **응답**: 공통 오류 형식(`application/problem+json`, `code`)과 `X-Request-ID`가 붙는다. `429`의 `code`는 `TOO_MANY_REQUESTS`, `503`은 `SERVICE_UNAVAILABLE`이다. 거절은 접근 로그에 `429`/`503`으로 남기고 오류 로그에는 쏟아내지 않는다. `503`은 api가 직접 줄 수도 있어서, 같은 접근 로그 줄의 `upstream=`이 `-`이면 nginx가 api를 부르지 않고 거절한 것이고 주소가 있으면 api가 준 것이다.
 
 ### 수치의 근거
 - 사용자는 약 10명이고 쓰기 요청(구독 등록, 피드백)은 사람당 드물다. 초당 5건에 burst 20은 정상 사용을 한참 넘는 값이다. 이동통신 공유 IP에 여러 명이 묶이는 경우도 있어서 IP당 한도는 넉넉하게 잡았다.

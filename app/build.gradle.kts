@@ -35,5 +35,5 @@ tasks.test {
         )
         .withPropertyName("repositoryFilesReadByTests")
     // 아직 src가 없는 모듈이 있어서 폴더가 없어도 빈 목록으로 처리되는 fileTree를 쓴다.
-    listOf("shared", "ops", "collector").forEach { inputs.files(rootProject.fileTree("$it/src")) }
+    listOf("shared", "ops", "collector", "app").forEach { inputs.files(rootProject.fileTree("$it/src")) }
 }

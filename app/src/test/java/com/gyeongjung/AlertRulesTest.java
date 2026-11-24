@@ -21,12 +21,14 @@ class AlertRulesTest {
         Map<String, Object> rule = ruleByUid("host-memory-low");
 
         // when
-        String query = (String) model(rule, "A").get("expr");
+        String query = ((String) model(rule, "A").get("expr")).replaceAll("\\s+", " ").trim();
         Map<String, Object> evaluator = evaluator(rule, "C");
 
         // then
         assertThat(rule).containsEntry("for", "5m");
-        assertThat(query).contains("node_memory_MemAvailable_bytes", "node_memory_MemTotal_bytes");
+        // 100을 곱한 비율(%)이어야 임계 10과 단위가 맞다. 일부만 확인하면 100을 빼거나 분자와 분모를 바꿔도 통과한다.
+        assertThat(query)
+                .isEqualTo("100 * node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes");
         assertThat(evaluator).containsEntry("type", "lt").containsEntry("params", List.of(10));
     }
 
