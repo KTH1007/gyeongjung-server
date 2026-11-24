@@ -24,3 +24,16 @@ dependencies {
 tasks.bootJar {
     archiveFileName = "app.jar"
 }
+
+tasks.test {
+    // 시험이 저장소의 다른 파일을 직접 읽는다. 입력으로 선언하지 않으면 그 파일만 고친 뒤 test가 UP-TO-DATE로 건너뛴다.
+    inputs
+        .files(
+            rootProject.file("docker-compose.yml"),
+            rootProject.file("ops/grafana/alerting/rules.yml"),
+            rootProject.file("config/checkstyle/import-control.xml"),
+        )
+        .withPropertyName("repositoryFilesReadByTests")
+    // 아직 src가 없는 모듈이 있어서 폴더가 없어도 빈 목록으로 처리되는 fileTree를 쓴다.
+    listOf("shared", "ops", "collector").forEach { inputs.files(rootProject.fileTree("$it/src")) }
+}
