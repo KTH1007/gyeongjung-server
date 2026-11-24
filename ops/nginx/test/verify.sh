@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# nginx 앞단 시험. 가짜 api 2개를 띄워서 라운드로빈, 장애 대응, 오류 응답, 헤더 전달, 실제 IP 복원을 확인한다.
+# nginx 앞단 시험. 가짜 api 2개를 띄워서 라운드로빈, 장애 대응, 오류 응답, 헤더 전달, 실제 IP 복원,
+# 쓰기 요청 속도 제한, 동시 연결 제한, 한도 설정(환경변수)을 확인한다.
 # 하나라도 실패하면 종료 코드 1로 끝난다. KEEP=1이면 끝난 뒤에도 컨테이너를 남긴다.
 set -uo pipefail
 
@@ -10,11 +11,15 @@ export DB_USERNAME=${DB_USERNAME:-test} DB_PASSWORD=${DB_PASSWORD:-test} GRAFANA
 # 개발 스택(mysql 등)과 같은 프로젝트면 끝날 때 down이 개발 환경까지 내리므로 시험 전용 프로젝트 이름을 쓴다.
 DC="docker compose -p gyeongjung-nginx-test -f docker-compose.yml -f docker-compose.nginx-test.yml --profile proxy"
 URL=http://127.0.0.1:8088
+# 한도는 운영 기본값(쓰기 초당 5건·burst 20, IP당 동시 30개, 전체 400개)보다 작게 줘서 시험이 짧게 끝나게 하고,
+# 환경변수로 값이 바뀌는 것까지 함께 확인한다.
+export LIMIT_WRITE_RATE=2 LIMIT_WRITE_BURST=5 LIMIT_CONN_PER_IP=3 LIMIT_CONN_TOTAL=5
+HOLD_PIDS=""
 failures=0
 
 pass() { echo "  OK   $1"; }
 fail() { echo "  FAIL $1"; failures=$((failures + 1)); }
-cleanup() { [ "${KEEP:-0}" = 1 ] || $DC down --remove-orphans >/dev/null 2>&1; }
+cleanup() { release; [ "${KEEP:-0}" = 1 ] || $DC down --remove-orphans >/dev/null 2>&1; }
 trap cleanup EXIT
 
 http_status() { curl -s -m 10 -o /dev/null -w '%{http_code}' "$@" "$URL/"; }
@@ -28,6 +33,18 @@ log_line() {
     done
 }
 header() { tr -d '\r' < "$1" | awk -F': ' -v k="$2" 'tolower($1)==k{print $2}'; }
+# IP를 정해서 요청한다. 시험 nginx는 사설 대역을 믿으므로 CF-Connecting-IP가 클라이언트 IP가 된다.
+req() { curl -s -m 10 -o /dev/null -w '%{http_code}' -X "$2" -H "CF-Connecting-IP: $1" "$URL${3:-/}"; }
+# 같은 IP로 연달아 보내고 상태 코드를 한 줄에 하나씩 낸다. 사용: burst IP 메서드 횟수 [경로]
+burst() { for _ in $(seq 1 "$3"); do req "$1" "$2" "${4:-/}"; echo; done; }
+count() { grep -c "^$1\$" || true; }
+# IP의 요청 n개를 /slow로 보내 처리 중인 채로 붙잡는다 (가짜 api가 25초쯤 걸려서 응답한다)
+hold() { for _ in $(seq 1 "$2"); do curl -s -m 40 -o /dev/null -H "CF-Connecting-IP: $1" "$URL/slow" & HOLD_PIDS="$HOLD_PIDS $!"; done; }
+release() { [ -n "$HOLD_PIDS" ] && kill $HOLD_PIDS 2>/dev/null; wait 2>/dev/null; HOLD_PIDS=""; }
+# 응답 헤더 파일($1)과 본문 파일($2)이 problem+json이고 status($3)와 code($4)가 기대와 같은지 본다
+is_problem() { header "$1" content-type | grep -q '^application/problem+json' && python3 -c "import json; d=json.load(open('$2')); assert d['status']==$3 and d['code']=='$4'" 2>/dev/null; }
+# 상태 코드가 $4가 될 때까지 최대 5초 기다린다. 붙잡은 요청이 자리 잡는 시간을 주려는 것이다
+wait_for_status() { local code=000; for _ in $(seq 1 10); do code=$(req "$1" "$2" "$3"); [ "$code" = "$4" ] && break; sleep 0.5; done; echo "$code"; }
 
 echo "[0] 기동"
 $DC up -d nginx api >/dev/null 2>&1 || fail "compose가 뜨지 않는다"
@@ -138,6 +155,63 @@ for _ in $(seq 1 60); do
     sleep 1
 done
 if [ "$recovered" -eq 1 ]; then pass "둘 다 복구되어 다시 분배된다"; else fail "60초 안에 복구되지 않았다"; fi
+
+echo "[9] 쓰기 요청 속도 제한 (IP당 초당 ${LIMIT_WRITE_RATE}건, burst ${LIMIT_WRITE_BURST})"
+ip=203.0.113.10
+codes=$(burst "$ip" POST 12)
+ok=$(echo "$codes" | count 200); limited=$(echo "$codes" | count 429)
+# burst 5에 처음 한 건이 더해져 6건이 통과하고, 그 사이 토큰이 최대 한 개 차오른다
+if [ "$ok" -ge 5 ] && [ "$ok" -le 8 ] && [ $((ok + limited)) -eq 12 ]; then pass "POST 12번 중 ${ok}번 통과, ${limited}번 429"; else fail "POST 12번의 결과가 이상하다: $(echo "$codes" | sort | uniq -c | tr -s ' \n' ' ')"; fi
+hdr=$(mktemp); out=$(mktemp); code=000
+for _ in $(seq 1 10); do
+    code=$(curl -s -m 10 -D "$hdr" -o "$out" -w '%{http_code}' -X POST -H "CF-Connecting-IP: $ip" "$URL/")
+    [ "$code" = 429 ] && break
+done
+if [ "$code" != 429 ]; then
+    fail "한도를 넘긴 POST가 429를 받지 못했다 (마지막 $code)"
+else
+    if [[ "$(header "$hdr" retry-after)" =~ ^[0-9]+$ ]]; then pass "429에 Retry-After(초)가 있다"; else fail "Retry-After가 없거나 숫자가 아니다: '$(header "$hdr" retry-after)'"; fi
+    if is_problem "$hdr" "$out" 429 TOO_MANY_REQUESTS; then pass "429 본문이 problem+json이고 code=TOO_MANY_REQUESTS"; else fail "429 본문 형식이 틀리다: $(cat "$out")"; fi
+    if [[ "$(header "$hdr" x-request-id)" =~ ^[0-9a-f]{32}$ ]]; then pass "429 응답에도 X-Request-ID가 있다"; else fail "429 응답에 X-Request-ID가 없다"; fi
+fi
+rm -f "$hdr" "$out"
+if [ -z "$(curl -sI -m 3 "$URL/healthz" | tr -d '\r' | grep -i '^retry-after')" ]; then pass "정상 응답에는 Retry-After가 없다"; else fail "정상 응답에 Retry-After가 붙는다"; fi
+if [ "$(req 203.0.113.11 POST /)" = 200 ]; then pass "다른 IP는 영향받지 않는다"; else fail "한도를 넘긴 IP 때문에 다른 IP도 막혔다"; fi
+if [ "$(burst "$ip" GET 60 / | count 200)" -eq 60 ]; then pass "한도를 넘긴 IP도 읽기 요청 60번은 모두 200"; else fail "읽기 요청이 제한됐다"; fi
+if [ "$(burst "$ip" GET 30 /healthz | count 200)" -eq 30 ]; then pass "한도를 넘긴 IP도 /healthz 30번은 모두 200"; else fail "/healthz가 제한됐다"; fi
+n=0
+for method in PUT DELETE PATCH; do
+    n=$((n + 1))
+    limited=$(burst "203.0.113.2$n" "$method" 12 | count 429)
+    if [ "$limited" -ge 3 ]; then pass "${method}도 제한된다 (12번 중 ${limited}번 429)"; else fail "${method}가 제한되지 않는다 (429 ${limited}번)"; fi
+done
+sleep 3
+if [ "$(req "$ip" POST /)" = 200 ]; then pass "3초 뒤 같은 IP의 쓰기가 다시 통과한다"; else fail "3초가 지나도 쓰기가 계속 막힌다"; fi
+
+echo "[10] 동시 연결 제한 (IP당 ${LIMIT_CONN_PER_IP}개, 서버 전체 ${LIMIT_CONN_TOTAL}개)"
+hold 203.0.113.40 3
+if [ "$(wait_for_status 203.0.113.40 GET / 503)" = 503 ]; then pass "IP당 한도(${LIMIT_CONN_PER_IP})를 채운 IP의 다음 요청은 503"; else fail "처리 중 요청이 한도만큼 쌓여도 503이 나지 않는다"; fi
+hdr=$(mktemp); out=$(mktemp)
+curl -s -m 10 -D "$hdr" -o "$out" -X GET -H "CF-Connecting-IP: 203.0.113.40" "$URL/" >/dev/null
+if is_problem "$hdr" "$out" 503 SERVICE_UNAVAILABLE; then pass "503 본문이 problem+json이고 code=SERVICE_UNAVAILABLE"; else fail "503 본문 형식이 틀리다: $(cat "$out")"; fi
+rm -f "$hdr" "$out"
+if [ "$(req 203.0.113.41 GET /)" = 200 ]; then pass "다른 IP는 영향받지 않는다"; else fail "한 IP의 연결 때문에 다른 IP도 막혔다"; fi
+if [ "$(req 203.0.113.40 GET /healthz)" = 200 ]; then pass "한도를 채운 IP도 /healthz는 200"; else fail "/healthz가 동시 연결 제한에 걸린다"; fi
+release
+if [ "$(wait_for_status 203.0.113.40 GET / 200)" = 200 ]; then pass "붙잡던 요청이 끝나면 다시 통과한다"; else fail "연결을 닫았는데도 계속 막힌다"; fi
+# 각 IP는 IP당 한도(3) 이하인데 합계가 전체 한도(5)에 닿는 경우다. 새 IP의 요청이 막히면 전체 한도가 작동한 것이다
+hold 203.0.113.50 2; hold 203.0.113.51 2; hold 203.0.113.52 1
+if [ "$(wait_for_status 203.0.113.53 GET / 503)" = 503 ]; then pass "전체 한도(${LIMIT_CONN_TOTAL})가 차면 연결이 하나도 없는 새 IP도 503"; else fail "전체 동시 연결 한도가 작동하지 않는다"; fi
+release
+if [ "$(wait_for_status 203.0.113.53 GET / 200)" = 200 ]; then pass "연결이 풀리면 새 IP도 통과한다"; else fail "연결을 닫았는데 전체 한도가 풀리지 않는다"; fi
+
+echo "[11] 한도 설정 (환경변수)"
+defaults=$(env -u LIMIT_WRITE_RATE -u LIMIT_WRITE_BURST -u LIMIT_CONN_PER_IP -u LIMIT_CONN_TOTAL $DC config 2>/dev/null)
+for pair in LIMIT_WRITE_RATE=5 LIMIT_WRITE_BURST=20 LIMIT_CONN_PER_IP=30 LIMIT_CONN_TOTAL=400; do
+    if echo "$defaults" | grep -Eq "^ +${pair%%=*}: \"?${pair#*=}\"?\$"; then pass "환경변수가 없으면 ${pair%%=*}는 ${pair#*=}"; else fail "${pair%%=*}의 기본값이 기대(${pair#*=})와 다르다"; fi
+done
+# 값이 틀렸을 때 한도 없이 조용히 뜨면 과부하 방어가 꺼진 줄 모르고 운영한다
+if $DC run --rm -T -e LIMIT_WRITE_RATE=abc nginx nginx -t >/dev/null 2>&1; then fail "잘못된 값(abc)인데 nginx가 설정을 받아들였다"; else pass "잘못된 값이면 nginx 설정 검사가 실패한다"; fi
 
 if [ "$failures" -eq 0 ]; then
     echo "nginx 시험 통과"
