@@ -4,4 +4,5 @@ plugins {
 
 dependencies {
     implementation(project(":shared"))
+    testImplementation(testFixtures(project(":shared")))
 }

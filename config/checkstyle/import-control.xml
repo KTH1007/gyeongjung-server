@@ -24,8 +24,6 @@
     <subpackage name="collector">
         <allow pkg="com.gyeongjung.collector"/>
         <allow pkg="com.gyeongjung.shared"/>
-        <!-- 모듈 패키지의 통합 테스트가 app 테스트의 공통 MySQL 컨테이너 기반 클래스를 상속한다. 이 클래스만 예외다 -->
-        <allow class="com.gyeongjung.AbstractMySqlIT"/>
         <disallow pkg="com\.gyeongjung\.ops\.[a-z].*" regex="true"/>
         <allow pkg="com.gyeongjung.ops"/>
     </subpackage>
