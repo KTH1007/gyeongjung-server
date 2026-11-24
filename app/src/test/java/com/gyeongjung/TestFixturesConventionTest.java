@@ -6,7 +6,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -36,16 +38,20 @@ class TestFixturesConventionTest {
     @Test
     void MySQL_컨테이너_선언은_shared의_testFixtures_한_곳뿐이다() throws IOException {
         // given
-        List<Path> declaring = new ArrayList<>();
+        Map<Path, Long> declarations = new LinkedHashMap<>();
         for (Path source : javaSources()) {
-            if (MYSQL_CONTAINER_DECLARATION.matcher(Files.readString(source)).find()) {
-                declaring.add(source);
+            long count =
+                    MYSQL_CONTAINER_DECLARATION.matcher(Files.readString(source)).results().count();
+            if (count > 0) {
+                declarations.put(source, count);
             }
         }
 
         // when & then
-        assertThat(declaring).as("MySQLContainer를 만드는 파일").hasSize(1);
-        assertThat(normalized(declaring.get(0))).contains(FIXTURES_DIR);
+        assertThat(declarations.values())
+                .as("파일별 MySQLContainer 선언 수: %s", declarations)
+                .containsExactly(1L);
+        assertThat(normalized(declarations.keySet().iterator().next())).contains(FIXTURES_DIR);
     }
 
     @Test
