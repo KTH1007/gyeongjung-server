@@ -1,5 +1,6 @@
 plugins {
     id("gyeongjung.java-conventions")
+    `java-test-fixtures`
 }
 
 dependencies {

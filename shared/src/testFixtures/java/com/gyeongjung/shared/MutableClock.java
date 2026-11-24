@@ -5,15 +5,15 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 
-final class MutableClock extends Clock {
+public final class MutableClock extends Clock {
 
     private Instant now;
 
-    MutableClock(Instant now) {
+    public MutableClock(Instant now) {
         this.now = now;
     }
 
-    void set(Instant newNow) {
+    public void set(Instant newNow) {
         this.now = newNow;
     }
 
