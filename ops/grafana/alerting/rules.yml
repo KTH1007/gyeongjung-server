@@ -194,6 +194,44 @@ groups:
                 - evaluator:
                     type: lt
                     params: [15]
+      - uid: host-memory-low
+        title: 호스트 가용 메모리 10% 미만
+        condition: C
+        for: 5m
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          # disk-low와 같은 이유로 값이 있을 때만 숫자를 넣는다.
+          summary: '{{ if $values.B }}호스트 가용 메모리가 {{ printf "%.0f" $values.B.Value }}%입니다{{ else }}호스트 메모리를 측정할 수 없습니다. node-exporter를 확인하세요{{ end }}'
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: '100 * node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes'
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [10]
 
   # 백업이 안 도는 경우를 잡는다. worker 규칙과 달리 지표가 아예 없는 것(백업이 한 번도 안 돌았거나 컨테이너가 죽음)이
   # 바로 알려야 할 상황이라 noDataState를 Alerting으로 둔다.
