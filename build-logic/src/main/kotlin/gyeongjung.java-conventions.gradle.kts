@@ -24,6 +24,11 @@ dependencies {
     implementation(springBootBom)
     implementation(modulithBom)
     annotationProcessor(springBootBom)
+    // testFixtures는 implementation 설정을 상속하지 않아서, 이 플러그인을 적용한 모듈에는 BOM을 따로 붙인다
+    plugins.withId("java-test-fixtures") {
+        "testFixturesImplementation"(springBootBom)
+        "testFixturesImplementation"(modulithBom)
+    }
     compileOnly("org.projectlombok:lombok")
     annotationProcessor("org.projectlombok:lombok")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
@@ -37,7 +42,9 @@ checkstyle {
 }
 
 tasks.withType<Checkstyle>().configureEach {
-    val suppressions = if (name == "checkstyleTest") "suppressions-test.xml" else "suppressions-main.xml"
+    // testFixtures도 테스트 코드라서 test와 같은 규칙(한글 메서드 이름 허용 등)을 쓴다
+    val isTestCode = name == "checkstyleTest" || name == "checkstyleTestFixtures"
+    val suppressions = if (isTestCode) "suppressions-test.xml" else "suppressions-main.xml"
     configProperties = mapOf("suppressions" to suppressions)
 }
 
