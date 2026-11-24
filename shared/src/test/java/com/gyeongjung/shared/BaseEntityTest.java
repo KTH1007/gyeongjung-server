@@ -7,12 +7,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.mysql.MySQLContainer;
 
 @DataJpaTest(
         properties = {
@@ -20,12 +16,8 @@ import org.testcontainers.mysql.MySQLContainer;
             "spring.jpa.properties.hibernate.jdbc.time_zone=UTC"
         })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Testcontainers
 @Import(AuditingTestConfig.class)
-class BaseEntityTest {
-
-    @Container @ServiceConnection
-    static final MySQLContainer MYSQL = new MySQLContainer("mysql:8.4");
+class BaseEntityTest extends MySqlContainerSupport {
 
     @Autowired SampleRepository repository;
     @Autowired MutableClock clock;

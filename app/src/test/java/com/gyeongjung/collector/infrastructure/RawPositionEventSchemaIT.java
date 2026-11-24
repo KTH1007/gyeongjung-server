@@ -3,19 +3,21 @@ package com.gyeongjung.collector.infrastructure;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.gyeongjung.AbstractMySqlIT;
+import com.gyeongjung.shared.MySqlContainerSupport;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
+@SpringBootTest(properties = "logging.file.name=build/test-logs/gyeongjung.log")
 @Transactional
-class RawPositionEventSchemaIT extends AbstractMySqlIT {
+class RawPositionEventSchemaIT extends MySqlContainerSupport {
 
     private static final DateTimeFormatter DB_FORMAT =
             DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss.SSS");
