@@ -36,6 +36,18 @@
 - **먼저 볼 것**: `df -h /`, `docker system df`, 대시보드의 "호스트 디스크 여유 (%)"
 - **조치**: 안 쓰는 이미지를 지운다(`docker image prune -f`. `-a`는 붙이지 않는다. 롤백용 이전 이미지까지 지워진다). 로그와 백업은 이미 한도가 있다(Docker 로그 10MB×3, 앱 로그 1GB, 백업 14일, Prometheus 15일과 1GB). 그래도 부족하면 디스크를 늘린다.
 
+### 호스트 가용 메모리 10% 미만 (`host-memory-low`, 5분 지속)
+- **의미**: 서버 전체의 가용 메모리가 10% 아래다. 가득 차면 리눅스가 프로세스를 강제로 죽인다(OOM). 컨테이너마다 거는 `mem_limit`과 달리 서버 전체를 본다.
+- **먼저 볼 것**: `docker stats --no-stream`으로 어느 컨테이너가 많이 쓰는지, 대시보드의 "호스트 메모리". 서버(리눅스)에서는 `free -h`, `dmesg | grep -i "out of memory"`로 이미 죽은 프로세스가 있는지 본다 (이 두 명령은 리눅스 전용이라 첫 배포(#14)에서 확인한다).
+- **조치**: 가장 많이 쓰는 서비스를 찾아 원인을 본다(보통 JVM 힙이 늘었거나 MySQL). 급하면 그 서비스를 `docker compose restart <서비스>`로 푼다. 반복되면 컨테이너 한도의 합이 서버 메모리를 넘는지 본다. 서버 메모리를 늘리는 것이 마지막 수단이다.
+- **알림 제목이 `DatasourceNoData`이고 요약이 "측정할 수 없습니다"면** 메모리가 부족한 것이 아니라 측정이 안 되는 것이다. `docker compose ps node-exporter`와 `docker compose logs --tail 100 node-exporter`를 보고, 죽었으면 `docker compose up -d node-exporter`.
+
+### 사용자 제보: 429나 503 응답
+알림은 없고 사용자나 로그에서 알게 되는 경우다. nginx가 과부하 방어로 요청을 거절한 것이다.
+- **의미**: `429`는 한 IP가 쓰기 요청(POST, PUT, PATCH, DELETE)을 너무 빨리 보냈을 때다. `503`은 동시에 처리 중인 요청이 IP당 또는 서버 전체 한도를 넘었을 때다. 읽기 요청과 `/healthz`는 제한하지 않는다.
+- **먼저 볼 것**: `docker compose logs --tail 500 nginx | grep -E '" (429|503) '`. 로그의 `ip=`로 어느 IP가 거절됐는지 본다. 한 IP에 몰리면 남용이나 오작동 클라이언트이고, 여러 IP에 퍼져 있으면 실제 사용 증가나 서버 지연이다. 503이 많으면 api가 느려져 요청이 쌓인 것은 아닌지 `docker stats --no-stream`과 api 로그를 본다.
+- **조치**: 정상 사용자가 막히는 것이면 서버 `.env`의 한도(`LIMIT_WRITE_RATE`, `LIMIT_WRITE_BURST`, `LIMIT_CONN_PER_IP`, `LIMIT_CONN_TOTAL`)를 올리고 `docker compose up -d nginx`로 컨테이너를 다시 만든다(`nginx -s reload`로는 반영되지 않는다). 남용이면 Cloudflare에서 그 IP를 막는다. 수치의 근거와 기본값은 `docs/overload-protection.md`.
+
 ### 백업이 12시간 넘게 성공하지 않음 (`backup-stale`, 5분 지속)
 - **의미**: 마지막 성공한 백업이 12시간을 넘었거나(정기 백업이 두 번 연속 실패), 지표가 아예 없다(backup 컨테이너가 죽었거나 한 번도 안 돌았다). 요약 문구가 둘을 구분한다.
 - **먼저 볼 것**: `docker compose ps backup`, `docker compose logs --tail 100 backup`, `docker compose exec backup ls -lt /backups`
