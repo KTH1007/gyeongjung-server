@@ -44,9 +44,9 @@
 
 ### 사용자 제보: 429나 503 응답
 알림은 없고 사용자나 로그에서 알게 되는 경우다. nginx가 과부하 방어로 요청을 거절한 것이다.
-- **의미**: `429`는 한 IP가 쓰기 요청(POST, PUT, PATCH, DELETE)을 너무 빨리 보냈을 때다. `503`은 동시에 처리 중인 요청이 IP당 또는 서버 전체 한도를 넘었을 때다. 읽기 요청과 `/healthz`는 제한하지 않는다.
-- **먼저 볼 것**: `docker compose logs --tail 500 nginx | grep -E '" (429|503) '`. 로그의 `ip=`로 어느 IP가 거절됐는지 본다. 한 IP에 몰리면 남용이나 오작동 클라이언트이고, 여러 IP에 퍼져 있으면 실제 사용 증가나 서버 지연이다. 503이 많으면 api가 느려져 요청이 쌓인 것은 아닌지 `docker stats --no-stream`과 api 로그를 본다.
-- **조치**: 정상 사용자가 막히는 것이면 서버 `.env`의 한도(`LIMIT_WRITE_RATE`, `LIMIT_WRITE_BURST`, `LIMIT_CONN_PER_IP`, `LIMIT_CONN_TOTAL`)를 올리고 `docker compose up -d nginx`로 컨테이너를 다시 만든다(`nginx -s reload`로는 반영되지 않는다). 남용이면 Cloudflare에서 그 IP를 막는다. 수치의 근거와 기본값은 `docs/overload-protection.md`.
+- **의미**: `429`는 한 IP가 쓰기 요청(POST, PUT, PATCH, DELETE)을 너무 빨리 보냈을 때다(읽기 요청은 속도 제한을 받지 않는다). `503`은 동시에 처리 중인 요청이 IP당 또는 서버 전체 한도를 넘었을 때이고 읽기 요청도 센다. `/healthz`는 둘 다 받지 않는다. 다만 `503`은 api가 직접 줄 수도 있어서 상태만으로는 한도 때문인지 알 수 없다.
+- **먼저 볼 것**: `docker compose logs --tail 500 nginx | grep -E '" (429|503) '`. 로그의 `ip=`로 어느 IP가 거절됐는지 본다. **503은 같은 줄의 `upstream=`으로 출처를 가른다.** `upstream=-`이면 nginx가 api를 부르지 않고 거절한 것(한도)이고, `upstream=`에 주소가 있으면 api가 503을 준 것이다. 한도 거절이 한 IP에 몰리면 남용이나 오작동 클라이언트이고, 여러 IP에 퍼져 있으면 실제 사용 증가나 서버 지연이다. 한도 거절 503이 많으면 api가 느려져 요청이 쌓인 것은 아닌지 `docker stats --no-stream`과 api 로그를 본다.
+- **조치**: `upstream=-`로 한도 거절이 확인되고 정상 사용자가 막히는 것이면 서버 `.env`의 한도(`LIMIT_WRITE_RATE`, `LIMIT_WRITE_BURST`, `LIMIT_CONN_PER_IP`, `LIMIT_CONN_TOTAL`)를 올리고 `docker compose up -d nginx`로 컨테이너를 다시 만든다(`nginx -s reload`로는 반영되지 않는다). 남용이면 Cloudflare에서 그 IP를 막는다. `upstream=`에 주소가 있는 503은 한도를 올려도 풀리지 않으니 api 로그에서 원인을 찾는다. 수치의 근거와 기본값은 `docs/overload-protection.md`.
 
 ### 백업이 12시간 넘게 성공하지 않음 (`backup-stale`, 5분 지속)
 - **의미**: 마지막 성공한 백업이 12시간을 넘었거나(정기 백업이 두 번 연속 실패), 지표가 아예 없다(backup 컨테이너가 죽었거나 한 번도 안 돌았다). 요약 문구가 둘을 구분한다.

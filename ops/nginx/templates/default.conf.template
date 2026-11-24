@@ -52,6 +52,8 @@ server {
     location / {
         # burst만큼은 바로 통과시키고 넘으면 즉시 429를 준다. 줄 세워 기다리게 하면(nodelay 없이) 그동안 연결이 묶인다.
         limit_req zone=write_per_ip burst=${LIMIT_WRITE_BURST} nodelay;
+        # 연결 제한은 읽기를 포함한 모든 요청을 센다. 메서드와 상관없이 서버가 동시에 감당할 양을 지키는 장치이고,
+        # 읽기가 대부분인 서비스라 읽기를 빼면 서버 전체 한도가 의미 없어진다.
         limit_conn conn_per_ip ${LIMIT_CONN_PER_IP};
         limit_conn conn_total ${LIMIT_CONN_TOTAL};
 
