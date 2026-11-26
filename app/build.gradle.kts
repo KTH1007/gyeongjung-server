@@ -32,10 +32,18 @@ tasks.test {
             rootProject.file("docker-compose.yml"),
             rootProject.file("docker-compose.prod.yml"),
             rootProject.file("ops/smoke.sh"),
+            rootProject.file("ops/prune-images.sh"),
             rootProject.file("ops/grafana/alerting/rules.yml"),
             rootProject.file("config/checkstyle/import-control.xml"),
         )
         .withPropertyName("repositoryFilesReadByTests")
     // 아직 src가 없는 모듈이 있어서 폴더가 없어도 빈 목록으로 처리되는 fileTree를 쓴다.
     listOf("shared", "ops", "collector", "app").forEach { inputs.files(rootProject.fileTree("$it/src")) }
+    // 문서, 스크립트, Dockerfile을 훑는 시험이 있다. RepositoryFiles가 훑는 범위(루트 파일, docs, ops, .github)와 같게 선언한다.
+    inputs.files(
+        rootProject.fileTree(rootProject.projectDir) { include("*.md", "*.yml", "*.yaml", "Dockerfile") },
+    )
+    listOf("docs", "ops", ".github").forEach {
+        inputs.files(rootProject.fileTree(it) { exclude("**/build/**") })
+    }
 }
