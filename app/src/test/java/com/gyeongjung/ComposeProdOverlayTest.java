@@ -63,6 +63,22 @@ class ComposeProdOverlayTest {
     }
 
     @Test
+    void 배포할_이미지는_환경변수로_바꿀_수_있고_비우면_로컬_이미지를_쓴다() throws IOException, InterruptedException {
+        // given
+        String app = "ghcr.io/example/gyeongjung-server:abc1234";
+        String backup = "ghcr.io/example/gyeongjung-backup:abc1234";
+        Map<String, Object> deployed =
+                effectiveProdConfig("APP_IMAGE=" + app + "\nBACKUP_IMAGE=" + backup + "\n");
+        Map<String, Object> local = effectiveProdConfig("");
+
+        // when & then
+        assertThat(services(deployed).get("worker")).containsEntry("image", app);
+        assertThat(services(deployed).get("backup")).containsEntry("image", backup);
+        assertThat(services(local).get("worker")).containsEntry("image", "gyeongjung-server");
+        assertThat(services(local).get("backup")).containsEntry("image", "gyeongjung-backup");
+    }
+
+    @Test
     void 서버에서_뜨는_모든_서비스에_메모리_한도가_있다() throws IOException, InterruptedException {
         // given
         Map<String, Map<String, Object>> services = serverServices();

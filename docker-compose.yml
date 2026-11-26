@@ -47,7 +47,7 @@ services:
   worker:
     profiles: ["app"]
     build: .
-    image: gyeongjung-server
+    image: ${APP_IMAGE:-gyeongjung-server}
     <<: *shared-host
     cpu_shares: 512
     # 우리가 만든 이미지는 root가 아닌 사용자로 실행되어 리눅스 권한이 필요 없다. 공식 이미지는 시작할 때 필요할 수 있어 제외한다.
@@ -142,7 +142,7 @@ services:
   backup:
     profiles: ["backup"]
     build: ./ops/backup
-    image: gyeongjung-backup
+    image: ${BACKUP_IMAGE:-gyeongjung-backup}
     <<: *shared-host
     cpu_shares: 128
     cap_drop: [ALL]
