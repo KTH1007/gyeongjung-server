@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -27,6 +28,11 @@ class ComposeProdOverlayTest {
             DB_PASSWORD=test
             GRAFANA_ADMIN_PASSWORD=test
             """;
+
+    // 서버 메모리를 다른 서비스와 나눠 쓰므로 우리 몫의 상한을 둔다. 올릴 때는 서버의 가용 메모리를 확인하고 올린다.
+    private static final long MEMORY_BUDGET_BYTES = 6L * 1024 * 1024 * 1024;
+    // 같은 서버의 다른 서비스는 기본 가중치(1024)를 쓰므로, 우리는 그보다 낮아야 CPU가 모자랄 때 양보한다.
+    private static final int DEFAULT_CPU_SHARES = 1024;
 
     @Test
     void 서버_설정은_127_0_0_1이_아닌_곳에_포트를_열지_않는다() throws IOException, InterruptedException {
@@ -54,6 +60,113 @@ class ComposeProdOverlayTest {
         // when & then
         assertThat(publishedPort(overridden, "prometheus")).isEqualTo("9091");
         assertThat(publishedPort(defaulted, "prometheus")).isEqualTo("9090");
+    }
+
+    @Test
+    void 서버에서_뜨는_모든_서비스에_메모리_한도가_있다() throws IOException, InterruptedException {
+        // given
+        Map<String, Map<String, Object>> services = serverServices();
+
+        // when
+        List<String> unlimited =
+                services.entrySet().stream()
+                        .filter(entry -> !entry.getValue().containsKey("mem_limit"))
+                        .map(Map.Entry::getKey)
+                        .toList();
+
+        // then
+        assertThat(services).as("서버에서 뜨는 서비스가 있어야 한다").isNotEmpty();
+        assertThat(unlimited).as("mem_limit이 없는 서비스").isEmpty();
+    }
+
+    @Test
+    void 메모리_한도의_합은_상한_이하이다() throws IOException, InterruptedException {
+        // given
+        Map<String, Map<String, Object>> services = serverServices();
+
+        // when
+        long total =
+                services.values().stream()
+                        .mapToLong(service -> bytes(service.get("mem_limit")))
+                        .sum();
+
+        // then
+        assertThat(total)
+                .as("서버에서 뜨는 서비스의 mem_limit 합(바이트)")
+                .isLessThanOrEqualTo(MEMORY_BUDGET_BYTES);
+    }
+
+    @Test
+    void 서버에서_뜨는_모든_서비스에_공통_보호_설정이_있다() throws IOException, InterruptedException {
+        // given
+        Map<String, Map<String, Object>> services = serverServices();
+
+        // when
+        List<String> missing = new ArrayList<>();
+        services.forEach((name, service) -> {
+            if (!"500".equals(String.valueOf(service.get("oom_score_adj")))) {
+                missing.add(name + " oom_score_adj");
+            }
+            if (!securityOptions(service).contains("no-new-privileges:true")) {
+                missing.add(name + " no-new-privileges");
+            }
+        });
+
+        // then
+        assertThat(missing).as("공통 보호 설정이 빠진 서비스").isEmpty();
+    }
+
+    @Test
+    void 우리가_만든_이미지의_서비스는_리눅스_권한을_모두_버린다() throws IOException, InterruptedException {
+        // given
+        Map<String, Map<String, Object>> services = serverServices();
+
+        // when
+        List<String> ours =
+                services.entrySet().stream()
+                        .filter(entry ->
+                                String.valueOf(entry.getValue().get("image"))
+                                        .contains("gyeongjung-"))
+                        .map(Map.Entry::getKey)
+                        .toList();
+        List<String> keeping =
+                ours.stream()
+                        .filter(name -> !List.of("ALL").equals(services.get(name).get("cap_drop")))
+                        .toList();
+
+        // then
+        // 이미지 이름 규칙이 바뀌어 대상이 하나도 안 잡히면 아래 검사가 아무것도 확인하지 못하고 통과한다.
+        assertThat(ours).contains("worker", "backup");
+        assertThat(keeping).as("cap_drop: [ALL]이 없는 서비스").isEmpty();
+    }
+
+    @Test
+    void CPU_가중치는_모든_서비스에_있고_다른_서비스의_기본값보다_낮다() throws IOException, InterruptedException {
+        // given
+        Map<String, Map<String, Object>> services = serverServices();
+
+        // when
+        List<String> invalid =
+                services.entrySet().stream()
+                        .filter(entry ->
+                                cpuShares(entry.getValue()) <= 0
+                                        || cpuShares(entry.getValue()) >= DEFAULT_CPU_SHARES)
+                        .map(Map.Entry::getKey)
+                        .toList();
+
+        // then
+        assertThat(invalid).as("cpu_shares가 없거나 기본값(1024) 이상인 서비스").isEmpty();
+    }
+
+    @Test
+    void CPU_가중치는_핵심_경로가_배경_작업보다_높다() throws IOException, InterruptedException {
+        // given
+        Map<String, Map<String, Object>> services = serverServices();
+
+        // when & then
+        assertThat(cpuShares(services.get("worker")))
+                .as("수집(worker)은 놓치면 복구할 수 없고, 지표 저장(prometheus)은 잠깐 늦어도 된다")
+                .isGreaterThan(cpuShares(services.get("prometheus")));
     }
 
     private static Map<String, Object> effectiveProdConfig(String extraEnv)
@@ -122,5 +235,28 @@ class ComposeProdOverlayTest {
         List<Map<String, Object>> ports = ports(services(config).get(service));
         assertThat(ports).as("%s 서비스에 공개 포트가 하나 있어야 한다", service).hasSize(1);
         return String.valueOf(ports.get(0).get("published"));
+    }
+
+    // 서버에서 실제로 뜨는 서비스만 본다. profiles가 있는 서비스는 도구용(복구 리허설, 마이그레이션 CLI)이라 서버에 배포하지 않는다.
+    private static Map<String, Map<String, Object>> serverServices()
+            throws IOException, InterruptedException {
+        Map<String, Map<String, Object>> servers =
+                new LinkedHashMap<>(services(effectiveProdConfig("")));
+        servers.values().removeIf(service -> service.containsKey("profiles"));
+        return servers;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> securityOptions(Map<String, Object> service) {
+        return (List<String>) service.getOrDefault("security_opt", List.of());
+    }
+
+    private static long bytes(Object memLimit) {
+        return memLimit == null ? 0 : Long.parseLong(String.valueOf(memLimit));
+    }
+
+    private static int cpuShares(Map<String, Object> service) {
+        Object value = service.get("cpu_shares");
+        return value == null ? 0 : Integer.parseInt(String.valueOf(value));
     }
 }
