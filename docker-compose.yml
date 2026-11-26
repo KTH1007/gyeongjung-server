@@ -61,7 +61,8 @@ services:
       - --storage.tsdb.retention.time=15d
       - --storage.tsdb.retention.size=1GB
     ports:
-      - "127.0.0.1:9090:9090"
+      # 같은 서버의 다른 서비스가 9090을 쓰면 서버 .env의 PROMETHEUS_HOST_PORT로 피한다.
+      - "127.0.0.1:${PROMETHEUS_HOST_PORT:-9090}:9090"
     volumes:
       - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
