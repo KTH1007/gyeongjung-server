@@ -31,6 +31,7 @@ tasks.test {
         .files(
             rootProject.file("docker-compose.yml"),
             rootProject.file("docker-compose.prod.yml"),
+            rootProject.file("ops/smoke.sh"),
             rootProject.file("ops/grafana/alerting/rules.yml"),
             rootProject.file("config/checkstyle/import-control.xml"),
         )
