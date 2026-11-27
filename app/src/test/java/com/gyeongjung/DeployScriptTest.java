@@ -42,6 +42,11 @@ class DeployScriptTest {
                     esac
                     exit 0
                     ;;
+                  config)
+                    [ -n "${FAKE_CONFIG_FAIL:-}" ] && exit 1
+                    for s in ${FAKE_SERVICES:-}; do echo "$s"; done
+                    exit 0
+                    ;;
                   exec)
                     [ -n "${FAKE_BACKUP_FAIL:-}" ] && exit 1
                     echo "backup-run" >> "$FAKE_STATE/events.log"
@@ -105,6 +110,17 @@ class DeployScriptTest {
             echo "prune" >> "$FAKE_STATE/events.log"
             exit "${FAKE_PRUNE_EXIT:-0}"
             """;
+
+    // 롤링이 어떤 이미지로, 어떤 서비스에 대해 불렸는지 남긴다. 지금 실행하려는 앱 이미지가 FAKE_ROLLING_FAIL_IMAGE이면 실패(10)한다.
+    private static final String FAKE_ROLLING =
+            """
+            #!/bin/bash
+            echo "rolling service=$1 APP_IMAGE=${APP_IMAGE:-} BACKUP_IMAGE=${BACKUP_IMAGE:-} COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-}" >> "$FAKE_STATE/events.log"
+            [ "${APP_IMAGE:-}" = "${FAKE_ROLLING_FAIL_IMAGE:-none}" ] && exit 10
+            exit 0
+            """;
+
+    private static final String API_SERVICES = "mysql worker api backup nginx";
 
     @Test
     void 배포가_성공하면_이미지받기_백업_교체_스모크_정리_순서로_하고_0으로_끝난다(@TempDir Path temp)
@@ -382,6 +398,204 @@ class DeployScriptTest {
         assertThat(result.events()).noneMatch(event -> event.startsWith("rmi"));
     }
 
+    @Test
+    void api가_없으면_롤링을_부르지_않고_모든_서비스를_한꺼번에_올린다(@TempDir Path temp)
+            throws IOException, InterruptedException {
+        // given
+        runningOn(temp, OLD);
+
+        // when
+        Result result = deploy(temp, Map.of("FAKE_SERVICES", "mysql worker backup"), NEW);
+
+        // then
+        assertThat(result.exitCode()).isZero();
+        assertThat(result.calls())
+                .contains(
+                        "docker compose -p gyeongjung config --services",
+                        "docker compose -p gyeongjung up -d --no-build");
+        assertThat(result.events()).noneMatch(event -> event.startsWith("rolling"));
+    }
+
+    @Test
+    void api가_있으면_일괄_교체에서_api를_빼고_나머지_서비스만_올린다(@TempDir Path temp)
+            throws IOException, InterruptedException {
+        // given
+        runningOn(temp, OLD);
+
+        // when
+        Result result = deploy(temp, Map.of("FAKE_SERVICES", API_SERVICES), NEW);
+
+        // then: compose가 api까지 한꺼번에 교체하면 롤링이 의미가 없다
+        List<String> upCalls =
+                result.calls().stream().filter(call -> call.contains(" up ")).toList();
+        assertThat(result.exitCode()).isZero();
+        assertThat(upCalls)
+                .containsExactly(
+                        "docker compose -p gyeongjung up -d --no-build mysql worker backup nginx");
+    }
+
+    @Test
+    void api가_있으면_worker가_올라온_뒤에_api를_롤링하고_그_뒤에_스모크를_돈다(@TempDir Path temp)
+            throws IOException, InterruptedException {
+        // given
+        runningOn(temp, OLD);
+
+        // when
+        Result result = deploy(temp, Map.of("FAKE_SERVICES", API_SERVICES), NEW);
+
+        // then: Flyway는 worker가 먼저 실행하고, api는 이미 바뀐 스키마를 본다
+        assertThat(result.exitCode()).isZero();
+        assertThat(result.events())
+                .containsExactly(
+                        pull("server", NEW),
+                        pull("backup", NEW),
+                        "backup-run",
+                        up(NEW),
+                        rolling(NEW),
+                        smokeOn(NEW),
+                        "prune");
+    }
+
+    @Test
+    void worker가_healthy가_되지_않으면_새_이미지로_api를_롤링하지_않는다(@TempDir Path temp)
+            throws IOException, InterruptedException {
+        // given
+        runningOn(temp, OLD);
+        Map<String, String> scenario =
+                Map.of("FAKE_SERVICES", API_SERVICES, "FAKE_HEALTH_BAD_IMAGE", app(NEW));
+
+        // when
+        Result result = deploy(temp, scenario, NEW);
+
+        // then: worker가 먼저 검증을 통과해야 api를 건드린다. 되돌릴 때는 api도 이전 이미지로 맞춘다.
+        assertThat(result.exitCode()).isEqualTo(20);
+        assertThat(result.events())
+                .containsExactly(
+                        pull("server", NEW),
+                        pull("backup", NEW),
+                        "backup-run",
+                        up(NEW),
+                        up(OLD),
+                        rolling(OLD),
+                        smokeOn(OLD),
+                        rmiApp(NEW),
+                        rmiBackup(NEW));
+    }
+
+    @Test
+    void api_롤링이_실패하면_worker와_api를_이전_이미지로_되돌리고_20으로_끝난다(@TempDir Path temp)
+            throws IOException, InterruptedException {
+        // given
+        runningOn(temp, OLD);
+        Map<String, String> scenario =
+                Map.of("FAKE_SERVICES", API_SERVICES, "FAKE_ROLLING_FAIL_IMAGE", app(NEW));
+
+        // when
+        Result result = deploy(temp, scenario, NEW);
+
+        // then: 롤링이 실패하면 새 버전의 스모크까지 가지 않는다
+        assertThat(result.exitCode()).isEqualTo(20);
+        assertThat(result.events())
+                .containsExactly(
+                        pull("server", NEW),
+                        pull("backup", NEW),
+                        "backup-run",
+                        up(NEW),
+                        rolling(NEW),
+                        up(OLD),
+                        rolling(OLD),
+                        smokeOn(OLD),
+                        rmiApp(NEW),
+                        rmiBackup(NEW));
+    }
+
+    @Test
+    void api_롤링이_실패한_첫_배포는_컨테이너를_그대로_두고_30으로_끝난다(@TempDir Path temp)
+            throws IOException, InterruptedException {
+        // given
+        Map<String, String> scenario =
+                Map.of("FAKE_SERVICES", API_SERVICES, "FAKE_ROLLING_FAIL_IMAGE", app(NEW));
+
+        // when
+        Result result = deploy(temp, scenario, NEW);
+
+        // then
+        assertThat(result.exitCode()).isEqualTo(30);
+        assertThat(result.events())
+                .containsExactly(pull("server", NEW), pull("backup", NEW), up(NEW), rolling(NEW));
+        assertThat(result.output()).contains("되돌릴 이전 버전이 없다");
+    }
+
+    @Test
+    void 스모크가_실패해_되돌릴_때도_api를_이전_이미지로_롤링한다(@TempDir Path temp)
+            throws IOException, InterruptedException {
+        // given
+        runningOn(temp, OLD);
+        Map<String, String> scenario =
+                Map.of("FAKE_SERVICES", API_SERVICES, "FAKE_SMOKE_FAIL_IMAGE", app(NEW));
+
+        // when
+        Result result = deploy(temp, scenario, NEW);
+
+        // then
+        assertThat(result.exitCode()).isEqualTo(20);
+        assertThat(result.events())
+                .containsExactly(
+                        pull("server", NEW),
+                        pull("backup", NEW),
+                        "backup-run",
+                        up(NEW),
+                        rolling(NEW),
+                        smokeOn(NEW),
+                        smokeOn(NEW),
+                        smokeOn(NEW),
+                        up(OLD),
+                        rolling(OLD),
+                        smokeOn(OLD),
+                        rmiApp(NEW),
+                        rmiBackup(NEW));
+    }
+
+    @Test
+    void 되돌리는_중_api_롤링도_실패하면_실패한_이미지를_지우지_않고_30으로_끝난다(@TempDir Path temp)
+            throws IOException, InterruptedException {
+        // given
+        runningOn(temp, OLD);
+        Map<String, String> scenario =
+                Map.of(
+                        "FAKE_SERVICES", API_SERVICES,
+                        "FAKE_HEALTH_BAD_IMAGE", app(NEW),
+                        "FAKE_ROLLING_FAIL_IMAGE", app(OLD));
+
+        // when
+        Result result = deploy(temp, scenario, NEW);
+
+        // then: 되돌림이 실패했으니 원인을 조사할 수 있게 실패한 이미지를 둔다
+        assertThat(result.exitCode()).isEqualTo(30);
+        assertThat(result.events())
+                .containsExactly(
+                        pull("server", NEW),
+                        pull("backup", NEW),
+                        "backup-run",
+                        up(NEW),
+                        up(OLD),
+                        rolling(OLD));
+    }
+
+    @Test
+    void compose_설정을_읽지_못하면_이미지를_받기_전에_10으로_끝난다(@TempDir Path temp)
+            throws IOException, InterruptedException {
+        // given
+        runningOn(temp, OLD);
+
+        // when
+        Result result = deploy(temp, Map.of("FAKE_CONFIG_FAIL", "1"), NEW);
+
+        // then: api가 있는지 모르면 롤링해야 할지 정할 수 없으므로 아무것도 바꾸지 않고 멈춘다
+        assertThat(result.exitCode()).isEqualTo(10);
+        assertThat(result.events()).isEmpty();
+    }
+
     private static String app(String tag) {
         return REGISTRY + "/gyeongjung-server:" + tag;
     }
@@ -408,6 +622,14 @@ class DeployScriptTest {
 
     private static String smokeOn(String tag) {
         return "smoke COMPOSE_PROJECT_NAME=gyeongjung image=" + app(tag);
+    }
+
+    private static String rolling(String tag) {
+        return "rolling service=api APP_IMAGE="
+                + app(tag)
+                + " BACKUP_IMAGE="
+                + backup(tag)
+                + " COMPOSE_PROJECT_NAME=gyeongjung";
     }
 
     // 이미 해당 태그가 배포되어 mysql, worker, backup이 떠 있는 상태로 만든다.
@@ -454,6 +676,7 @@ class DeployScriptTest {
         install(bin.resolve("docker"), FAKE_DOCKER);
         install(temp.resolve("smoke.sh"), FAKE_SMOKE);
         install(temp.resolve("prune.sh"), FAKE_PRUNE);
+        install(temp.resolve("rolling.sh"), FAKE_ROLLING);
         return state;
     }
 
@@ -469,6 +692,7 @@ class DeployScriptTest {
         env.put("SMOKE_ATTEMPTS", "3");
         env.put("SMOKE_COMMAND", temp.resolve("smoke.sh").toString());
         env.put("PRUNE_COMMAND", temp.resolve("prune.sh").toString());
+        env.put("ROLLING_COMMAND", temp.resolve("rolling.sh").toString());
         env.putAll(scenario);
     }
 

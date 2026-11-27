@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # 이미지 태그(커밋 해시)를 받아 서버에 배포한다. 새 버전이 확인을 통과하지 못하면 이전 이미지로 되돌린다.
+# api 서비스가 있으면 worker 등은 한꺼번에 교체하고 api는 그 뒤에 ops/rolling.sh로 한 개씩 교체한다.
 # 사용법: IMAGE_REGISTRY=ghcr.io/<소유자> ops/deploy.sh <태그>
 # 종료 코드: 0 성공, 2 입력 오류, 10 배포 전 단계 실패(아무것도 바꾸지 않음),
 #            20 새 버전이 실패해서 이전 이미지로 되돌림, 30 되돌림도 실패했거나 되돌릴 이전 버전이 없음(수동 조치 필요)
@@ -25,6 +26,7 @@ health_attempts=${HEALTH_ATTEMPTS:-36}
 smoke_attempts=${SMOKE_ATTEMPTS:-6}
 smoke_command=${SMOKE_COMMAND:-ops/smoke.sh}
 prune_command=${PRUNE_COMMAND:-ops/prune-images.sh}
+rolling_command=${ROLLING_COMMAND:-ops/rolling.sh}
 
 new_app="$IMAGE_REGISTRY/gyeongjung-server:$tag"
 new_backup="$IMAGE_REGISTRY/gyeongjung-backup:$tag"
@@ -32,7 +34,15 @@ new_backup="$IMAGE_REGISTRY/gyeongjung-backup:$tag"
 compose() { docker compose -p gyeongjung "$@"; }
 
 # 서버에서 이미지를 빌드하면 같은 서버의 다른 서비스의 CPU와 메모리를 빼앗는다. 이미지는 CI에서 만들어 받아 온다.
-compose_up() { APP_IMAGE=$1 BACKUP_IMAGE=$2 docker compose -p gyeongjung up -d --no-build; }
+compose_up() {
+    if [ "$has_api" -eq 1 ]; then
+        # 서비스 이름 목록이라 따옴표 없이 풀어서 넘긴다.
+        # shellcheck disable=SC2086
+        APP_IMAGE=$1 BACKUP_IMAGE=$2 docker compose -p gyeongjung up -d --no-build $others
+    else
+        APP_IMAGE=$1 BACKUP_IMAGE=$2 docker compose -p gyeongjung up -d --no-build
+    fi
+}
 
 # 실행 중인 컨테이너가 쓰는 이미지가 이전 버전이다. 별도 상태 파일을 두지 않아서 현실과 어긋날 일이 없다.
 running_image() { # 서비스 이름
@@ -79,10 +89,28 @@ remove_failed_image() { # 지울 이미지, 지금 쓰는 이미지
     return 0
 }
 
-# 지정한 이미지로 교체하고 준비될 때까지 기다린 뒤 스모크로 확인한다.
-release() { # 앱 이미지, 백업 이미지
-    compose_up "$1" "$2" && wait_healthy && run_smoke
+# worker가 먼저 올라와 Flyway가 끝난 뒤에 api를 한 개씩 교체한다. api가 없으면 할 일이 없다.
+roll_api() { # 앱 이미지, 백업 이미지
+    [ "$has_api" -eq 1 ] || return 0
+    APP_IMAGE=$1 BACKUP_IMAGE=$2 "$rolling_command" api
 }
+
+# 지정한 이미지로 교체하고 준비될 때까지 기다린 뒤 api를 롤링하고 스모크로 확인한다.
+release() { # 앱 이미지, 백업 이미지
+    compose_up "$1" "$2" && wait_healthy && roll_api "$1" "$2" && run_smoke
+}
+
+# api가 있으면 api만 롤링으로 교체하고 나머지는 한꺼번에 교체한다. compose가 api까지 한꺼번에 바꾸면 복제본이 모두 내려가는 순간이 생긴다.
+# 서비스 목록을 읽지 못하면 롤링해야 할지 알 수 없으므로 이미지를 받기 전에 아무것도 바꾸지 않고 멈춘다.
+if ! services=$(compose config --services 2>/dev/null); then
+    echo "compose 설정을 읽지 못해서 배포하지 않는다" >&2
+    exit 10
+fi
+has_api=0
+others=""
+for service in $services; do
+    if [ "$service" = api ]; then has_api=1; else others="$others $service"; fi
+done
 
 previous_app=$(running_image worker)
 previous_backup=$(running_image backup)
