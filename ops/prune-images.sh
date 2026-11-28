@@ -6,6 +6,11 @@
 set -uo pipefail
 
 keep=${KEEP_IMAGES:-2}
+# 숫자가 아니면 아래 정수 비교가 오류로 실패하는데, 스크립트는 멈추지 않고 그 이미지를 지우는 쪽으로 간다. 최신 이미지까지 지우게 되므로 먼저 거른다.
+if ! [[ $keep =~ ^[0-9]{1,9}$ ]]; then
+    echo "KEEP_IMAGES는 0 이상의 정수여야 한다: '${keep}'" >&2
+    exit 2
+fi
 dry_run=0
 [ "${1:-}" = "--dry-run" ] && dry_run=1
 

@@ -4,12 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -61,6 +60,50 @@ class PruneImagesScriptTest {
         assertThat(result.calls())
                 .containsExactlyInAnyOrder(
                         "rmi " + SERVER + ":c3", "rmi " + SERVER + ":c2", "rmi " + BACKUP + ":b0");
+    }
+
+    @Test
+    void KEEP_IMAGES가_음이_아닌_정수가_아니면_아무것도_지우지_않고_2로_끝난다(@TempDir Path temp)
+            throws IOException, InterruptedException {
+        // given: 정수 비교가 오류로 실패하면 남길 이미지까지 지우게 되므로 값을 먼저 걸러야 한다
+        List<String> invalid =
+                List.of("two", "-1", "2.5", "1 2", "0x2", "+2", "99999999999999999999");
+
+        // when
+        List<String> wrong = new ArrayList<>();
+        for (int i = 0; i < invalid.size(); i++) {
+            Result result =
+                    run(
+                            temp.resolve("run" + i),
+                            Map.of("KEEP_IMAGES", invalid.get(i)),
+                            images(),
+                            "");
+            if (result.exitCode() != 2 || !result.calls().isEmpty()) {
+                wrong.add(
+                        invalid.get(i)
+                                + " -> 종료 코드 "
+                                + result.exitCode()
+                                + ", 호출 "
+                                + result.calls());
+            }
+        }
+
+        // then
+        assertThat(wrong).as("거르지 못한 값").isEmpty();
+    }
+
+    @Test
+    void KEEP_IMAGES로_남길_개수를_정하고_0이면_사용_중이_아닌_우리_이미지를_모두_지운다(@TempDir Path temp)
+            throws IOException, InterruptedException {
+        // when
+        Result none = run(temp.resolve("none"), Map.of("KEEP_IMAGES", "0"), images(), "");
+        Result many = run(temp.resolve("many"), Map.of("KEEP_IMAGES", "4"), images(), "");
+
+        // then: 라벨이 붙은 우리 이미지는 7개다(다른 서비스의 이미지는 목록에 오지 않는다)
+        assertThat(none.exitCode()).isZero();
+        assertThat(none.calls()).hasSize(7).allMatch(call -> call.startsWith("rmi "));
+        assertThat(many.exitCode()).isZero();
+        assertThat(many.calls()).isEmpty();
     }
 
     @Test
@@ -175,6 +218,13 @@ class PruneImagesScriptTest {
 
     private static Result run(Path temp, String images, String inUse, String... args)
             throws IOException, InterruptedException {
+        return run(temp, Map.of(), images, inUse, args);
+    }
+
+    private static Result run(
+            Path temp, Map<String, String> env, String images, String inUse, String... args)
+            throws IOException, InterruptedException {
+        Files.createDirectories(temp);
         Path bin = Files.createDirectory(temp.resolve("bin"));
         Path calls = Files.createFile(temp.resolve("calls.txt"));
         Path docker = bin.resolve("docker");
@@ -194,13 +244,9 @@ class PruneImagesScriptTest {
         builder.environment().put("FAKE_CALLS", calls.toString());
         // 개발자의 셸에 설정된 값이 시험 결과를 바꾸지 않게 지운다.
         builder.environment().remove("KEEP_IMAGES");
-        Process process = builder.start();
-        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        boolean finished = process.waitFor(60, TimeUnit.SECONDS);
-        if (!finished) {
-            process.destroyForcibly();
-        }
-        assertThat(finished).as("prune-images.sh가 60초 안에 끝나야 한다").isTrue();
-        return new Result(process.exitValue(), output, Files.readAllLines(calls));
+        builder.environment().putAll(env);
+        ProcessOutput run = ProcessOutput.run(builder, 60);
+        assertThat(run.finished()).as("prune-images.sh가 60초 안에 끝나야 한다").isTrue();
+        return new Result(run.exitCode(), run.output(), Files.readAllLines(calls));
     }
 }
