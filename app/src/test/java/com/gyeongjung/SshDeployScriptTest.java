@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -58,6 +59,7 @@ class SshDeployScriptTest {
             while [ -e "$state/hold" ]; do sleep 0.1; done
             echo "deploy finished"
             touch "$state/done"
+            echo "$*" >> "$state/finished.log"
             exit "$(cat "$state/exit" 2> /dev/null || echo 0)"
             """;
 
@@ -81,7 +83,11 @@ class SshDeployScriptTest {
 
         // then
         assertThat(result.exitCode()).isEqualTo(20);
+        assertThat(result.output()).as("배포의 출력이 호출자에게 전달돼야 한다").contains("deploy finished");
         assertThat(calls(temp)).containsExactly("deploy [2222222] registry=" + REGISTRY);
+        assertThat(stateFiles(temp))
+                .as("출력을 받던 임시 파일은 어디에도 남으면 안 된다")
+                .containsExactlyInAnyOrder("deploy.lock", "deploy.log");
     }
 
     @Test
@@ -217,9 +223,13 @@ class SshDeployScriptTest {
         Result after = untilNotLocked(temp);
         wrapper.waitFor(30, TimeUnit.SECONDS);
 
-        // then
+        // then: 락이 풀렸다는 것만으로는 부족하다. 출력을 받던 도우미가 사라졌는데 배포가 SIGPIPE로 죽었어도 락은 풀린다.
+        // 그러면 롤백 코드에 닿지 못한 채 절반만 바뀐 서버가 남으므로 배포가 마지막까지 갔는지를 본다.
         assertThat(during.exitCode()).isEqualTo(11);
         assertThat(after.exitCode()).isZero();
+        assertThat(Files.readAllLines(temp.resolve("state/finished.log")))
+                .as("첫 배포가 끝까지 갔다(done은 뒤의 배포도 만든다)")
+                .contains("1111111");
     }
 
     @Test
@@ -395,6 +405,12 @@ class SshDeployScriptTest {
             return auditLog(temp);
         } catch (IOException e) {
             return List.of();
+        }
+    }
+
+    private static List<String> stateFiles(Path temp) throws IOException {
+        try (Stream<Path> files = Files.list(temp.resolve("home/.gyeongjung"))) {
+            return files.map(file -> file.getFileName().toString()).toList();
         }
     }
 
