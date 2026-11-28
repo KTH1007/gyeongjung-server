@@ -18,10 +18,10 @@ services:
   node-exporter:
     restart: unless-stopped
 
+  # 포트 설정을 일부러 두지 않는다. 기본 설정의 127.0.0.1:8088만 열려서 SSH 터널로만 접근한다.
+  # 호스트의 80과 443은 같은 서버의 다른 서비스가 쓰고, 외부 공개 방식은 #39에서 정한다.
   nginx:
     profiles: !reset []
-    ports: !override
-      - "80:80"
     restart: unless-stopped
 
   backup:

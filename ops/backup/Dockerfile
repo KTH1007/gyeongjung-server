@@ -7,3 +7,5 @@ COPY --from=rclone /usr/local/bin/rclone /usr/local/bin/rclone
 # /offsite는 시험용 로컬 목적지이고 운영에서는 쓰지 않는다.
 RUN mkdir -p /backups /metrics /offsite && chown mysql:mysql /backups /metrics /offsite
 USER mysql
+# 같은 서버에서 우리 이미지만 골라 정리하는 기준이다 (ops/prune-images.sh)
+LABEL project=gyeongjung

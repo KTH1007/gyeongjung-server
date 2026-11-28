@@ -4,7 +4,12 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 
-PROMETHEUS_URL=${PROMETHEUS_URL:-http://localhost:9090}
+# 서버에서는 같은 호스트의 다른 서비스가 9090을 쓸 수 있어서 우리 compose가 실제로 연 포트를 물어본다.
+# 서비스가 없거나 포트를 공개하지 않았으면 빈 값이나 "invalid IP:0"이 나와서 기본 포트를 쓴다.
+prometheus_address=$(docker compose port prometheus 9090 2>/dev/null)
+address_pattern='^(\[[0-9a-fA-F:]+\]|[0-9.]+):[1-9][0-9]*$'
+[[ $prometheus_address =~ $address_pattern ]] || prometheus_address=localhost:9090
+PROMETHEUS_URL=${PROMETHEUS_URL:-http://$prometheus_address}
 EXPECTED_PROFILE=${EXPECTED_PROFILE:-}
 GRAFANA_URL=${GRAFANA_URL:-http://localhost:3000}
 EXPECTED_ALERT_RULES=${EXPECTED_ALERT_RULES:-0}
