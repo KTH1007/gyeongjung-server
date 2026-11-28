@@ -67,6 +67,8 @@ wait_fresh_healthy() {
     while [ "$attempt" -le "$attempts" ]; do
         classify
         all=1
+        # 새 복제본이 하나도 안 보이는 것은 확인할 것이 없다는 뜻이 아니라 아직 못 찾았다는 뜻이다. 성공으로 치면 옛 복제본을 내려서 서비스가 끊긴다.
+        [ -n "$fresh" ] || all=0
         for id in $fresh; do
             case "$(health_of "$id")" in
                 healthy) ;;
@@ -81,7 +83,7 @@ wait_fresh_healthy() {
         sleep "$poll"
         attempt=$((attempt + 1))
     done
-    echo "새 복제본이 시간 안에 healthy가 되지 않았다" >&2
+    echo "새 복제본이 보이지 않거나 시간 안에 healthy가 되지 않았다" >&2
     return 1
 }
 

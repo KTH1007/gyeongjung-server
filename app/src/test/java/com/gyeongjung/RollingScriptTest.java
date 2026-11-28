@@ -5,14 +5,12 @@ import static org.assertj.core.api.Assertions.entry;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -63,7 +61,7 @@ class RollingScriptTest {
                     while [ "$(ls "$C" | wc -l)" -lt "$target" ]; do
                       seq=$(( $(cat "$FAKE_STATE/seq" 2> /dev/null || echo 0) + 1 ))
                       echo "$seq" > "$FAKE_STATE/seq"
-                      printf 'hash=%s\\nhealth=%s\\n' "${FAKE_WANT_HASH:-newhash}" "${FAKE_NEW_HEALTH:-healthy}" > "$C/new$seq"
+                      printf 'hash=%s\\nhealth=%s\\n' "${FAKE_NEW_HASH:-${FAKE_WANT_HASH:-newhash}}" "${FAKE_NEW_HEALTH:-healthy}" > "$C/new$seq"
                     done
                     ;;
                 esac
@@ -210,6 +208,23 @@ class RollingScriptTest {
         assertThat(result.exitCode()).isEqualTo(10);
         assertThat(checks).as("새 복제본의 상태를 확인한 횟수").isEqualTo(3);
         assertThat(result.calls("docker stop")).isEmpty();
+    }
+
+    @Test
+    void 새로_만든_복제본이_현재_설정의_해시를_갖지_않으면_옛_복제본을_내리지_않고_10으로_끝난다(@TempDir Path temp)
+            throws IOException, InterruptedException {
+        // given: 새 복제본이 현재 설정으로 만든 것으로 분류되지 않는다(새 복제본이 하나도 보이지 않는 것과 같다)
+        oldReplicas(temp);
+        Map<String, String> env =
+                Map.of("FAKE_NEW_HASH", "someotherhash", "ROLLING_HEALTH_ATTEMPTS", "3");
+
+        // when
+        Result result = rolling(temp, env, "api");
+
+        // then: 확인할 새 복제본이 없다고 곧바로 성공으로 보고 옛 복제본을 내리면 서비스가 끊긴다
+        assertThat(result.exitCode()).isEqualTo(10);
+        assertThat(result.calls("docker stop")).isEmpty();
+        assertThat(result.calls("docker rm")).isEmpty();
     }
 
     @Test
@@ -408,16 +423,11 @@ class RollingScriptTest {
         ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
         configure(builder.environment(), dir, env);
 
-        Process process = builder.start();
-        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        boolean finished = process.waitFor(60, TimeUnit.SECONDS);
-        if (!finished) {
-            process.destroyForcibly();
-        }
-        assertThat(finished).as("rolling.sh가 60초 안에 끝나야 한다").isTrue();
+        ProcessOutput run = ProcessOutput.run(builder, 60);
+        assertThat(run.finished()).as("rolling.sh가 60초 안에 끝나야 한다").isTrue();
         return new Result(
-                process.exitValue(),
-                output,
+                run.exitCode(),
+                run.output(),
                 Files.readAllLines(state.resolve("calls.log")),
                 containersOf(state.resolve("containers")));
     }
