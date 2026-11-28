@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -13,7 +12,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -457,15 +455,10 @@ class PreflightScriptTest {
         ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
         configure(builder.environment(), temp, scenario);
 
-        Process process = builder.start();
-        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        boolean finished = process.waitFor(60, TimeUnit.SECONDS);
-        if (!finished) {
-            process.destroyForcibly();
-        }
-        assertThat(finished).as("preflight.sh가 60초 안에 끝나야 한다").isTrue();
+        ProcessOutput run = ProcessOutput.run(builder, 60);
+        assertThat(run.finished()).as("preflight.sh가 60초 안에 끝나야 한다").isTrue();
         return new Result(
-                process.exitValue(), output, Files.readAllLines(state.resolve("calls.log")));
+                run.exitCode(), run.output(), Files.readAllLines(state.resolve("calls.log")));
     }
 
     private static Path prepareFakes(Path temp) throws IOException {

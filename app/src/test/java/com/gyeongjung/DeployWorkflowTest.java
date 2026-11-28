@@ -43,6 +43,7 @@ class DeployWorkflowTest {
         assertThat(map(workflow().get("permissions"))).containsOnlyKeys("contents");
         assertThat(map(workflow().get("permissions"))).containsEntry("contents", "read");
         assertThat(map(job("build").get("permissions")))
+                .containsOnlyKeys("contents", "packages")
                 .containsEntry("packages", "write")
                 .containsEntry("contents", "read");
         assertThat(job("deploy")).doesNotContainKey("permissions");

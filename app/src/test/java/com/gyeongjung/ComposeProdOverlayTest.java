@@ -3,14 +3,14 @@ package com.gyeongjung;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
@@ -200,23 +200,32 @@ class ComposeProdOverlayTest {
         Path errors = Files.createTempFile("compose-errors", ".txt");
         try {
             ProcessBuilder builder = new ProcessBuilder(composeCommand(envFile));
-            // 셸에 설정된 COMPOSE_FILE 같은 값이 시험 결과를 바꾸지 않게 지운다.
-            builder.environment().keySet().removeIf(name -> name.startsWith("COMPOSE_"));
+            // 셸에 설정된 값이 시험 결과를 바꾸지 않게 지운다. Compose는 --env-file보다 셸의 값을 먼저 쓴다.
+            Set<String> controlled = valuesTheTestControls(envFile);
+            builder.environment()
+                    .keySet()
+                    .removeIf(name -> name.startsWith("COMPOSE_") || controlled.contains(name));
             builder.redirectError(errors.toFile());
-            Process process = builder.start();
-            String output =
-                    new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            boolean finished = process.waitFor(60, TimeUnit.SECONDS);
-            if (!finished) {
-                process.destroyForcibly();
-            }
-            assertThat(finished && process.exitValue() == 0)
+            ProcessOutput run = ProcessOutput.run(builder, 60);
+            assertThat(run.finished() && run.exitCode() == 0)
                     .as("docker compose config가 실패했다: %s", Files.readString(errors))
                     .isTrue();
-            return output;
+            return run.output();
         } finally {
             Files.deleteIfExists(errors);
         }
+    }
+
+    // 환경 파일에 적은 이름과, 파일에 없어도 기본값 시험이 비어 있어야 하는 이름들이다.
+    private static Set<String> valuesTheTestControls(Path envFile) throws IOException {
+        Set<String> names =
+                new HashSet<>(Set.of("PROMETHEUS_HOST_PORT", "APP_IMAGE", "BACKUP_IMAGE"));
+        for (String line : Files.readAllLines(envFile)) {
+            if (line.contains("=")) {
+                names.add(line.substring(0, line.indexOf('=')));
+            }
+        }
+        return names;
     }
 
     private static List<String> composeCommand(Path envFile) {

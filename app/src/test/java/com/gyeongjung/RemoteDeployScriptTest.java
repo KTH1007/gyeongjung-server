@@ -3,14 +3,12 @@ package com.gyeongjung;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -220,15 +218,10 @@ class RemoteDeployScriptTest {
         ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
         configure(builder.environment(), temp, scenario);
 
-        Process process = builder.start();
-        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        boolean finished = process.waitFor(60, TimeUnit.SECONDS);
-        if (!finished) {
-            process.destroyForcibly();
-        }
-        assertThat(finished).as("remote-deploy.sh가 60초 안에 끝나야 한다").isTrue();
+        ProcessOutput run = ProcessOutput.run(builder, 60);
+        assertThat(run.finished()).as("remote-deploy.sh가 60초 안에 끝나야 한다").isTrue();
         return new Result(
-                process.exitValue(), output, Files.readAllLines(state.resolve("calls.log")));
+                run.exitCode(), run.output(), Files.readAllLines(state.resolve("calls.log")));
     }
 
     // 가짜 ssh, 호출 기록, 가짜 키 파일(내용이 출력에 새면 안 된다), 호스트 키 파일을 만든다.
