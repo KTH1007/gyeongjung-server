@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -87,6 +88,14 @@ class PreflightScriptTest {
             echo "df $*" >> "$FAKE_STATE/calls.log"
             echo "Filesystem 1024-blocks Used Available Capacity Mounted on"
             echo "/dev/sda1 47185920 19922944 ${FAKE_DF_AVAIL_KB:-27262976} 43% /"
+            """;
+
+    // python3는 배포 락(lock-run.py)이 fcntl을 불러올 수 있는지까지 본다. 실패는 FAKE_PYTHON_MISSING으로 흉내 낸다.
+    private static final String FAKE_PYTHON =
+            """
+            #!/bin/bash
+            echo "python3 $*" >> "$FAKE_STATE/calls.log"
+            [ -z "${FAKE_PYTHON_MISSING:-}" ]
             """;
 
     @Test
@@ -239,6 +248,43 @@ class PreflightScriptTest {
     }
 
     @Test
+    void 로컬용과_시험용_오버레이가_COMPOSE_FILE에_있으면_실패하고_알림_오버레이는_통과한다(@TempDir Path temp)
+            throws IOException, InterruptedException {
+        // given: 저장소에 있는 로컬용과 시험용 오버레이를 전부 모은다. 새로 생겨도 자동으로 포함된다.
+        List<String> overlays = testOnlyOverlays();
+        Path alerting =
+                brokenEnv(temp, "alerting", "prod.yml", "prod.yml:docker-compose.alerting.yml");
+
+        // when
+        List<String> accepted = acceptedOverlays(temp, overlays);
+        Result withAlerting =
+                preflight(temp.resolve("alerting-run"), Map.of("ENV_FILE", alerting.toString()));
+
+        // then
+        assertThat(overlays)
+                .as("저장소의 로컬용과 시험용 오버레이")
+                .contains(
+                        "docker-compose.local.yml",
+                        "docker-compose.nginx-test.yml",
+                        "docker-compose.backup-test.yml");
+        assertThat(accepted).as("통과시킨 오버레이").isEmpty();
+        assertThat(hasFailure(withAlerting, ".env")).isFalse();
+    }
+
+    @Test
+    void python3가_없거나_실행되지_않으면_실패한다(@TempDir Path temp) throws IOException, InterruptedException {
+        // when: 배포 락(lock-run.py)과 롤링(rolling.sh)이 python3를 쓴다
+        Result ready = preflight(temp.resolve("ready"), Map.of());
+        Result missing = preflight(temp.resolve("missing"), Map.of("FAKE_PYTHON_MISSING", "1"));
+
+        // then: 실패가 다른 점검으로 번지지 않고 이 점검 하나로만 나온다
+        assertThat(ready.calls()).contains("python3 -c import fcntl");
+        assertThat(hasFailure(ready, "python3")).isFalse();
+        assertThat(hasFailure(missing, "python3")).isTrue();
+        assertThat(missing.failures()).hasSize(1);
+    }
+
+    @Test
     void compose_설정이_잘못되면_실패하고_이유를_보여준다(@TempDir Path temp)
             throws IOException, InterruptedException {
         // when
@@ -367,6 +413,29 @@ class PreflightScriptTest {
         return env(temp.resolve(dir), VALID_ENV.replace(from, to), "rw-------");
     }
 
+    private static List<String> testOnlyOverlays() throws IOException {
+        try (Stream<Path> files = Files.list(RepositoryFiles.root())) {
+            return files.map(file -> file.getFileName().toString())
+                    .filter(name -> name.matches("docker-compose\\.(local|.+-test)\\.yml"))
+                    .sorted()
+                    .toList();
+        }
+    }
+
+    // COMPOSE_FILE에 오버레이를 하나씩 더해 점검을 돌리고, 실패해야 하는데 통과한 것을 모은다.
+    private static List<String> acceptedOverlays(Path temp, List<String> overlays)
+            throws IOException, InterruptedException {
+        List<String> accepted = new ArrayList<>();
+        for (int i = 0; i < overlays.size(); i++) {
+            Path env = brokenEnv(temp, "o" + i, "prod.yml", "prod.yml:" + overlays.get(i));
+            Result result = preflight(temp.resolve("run" + i), Map.of("ENV_FILE", env.toString()));
+            if (!hasFailure(result, ".env")) {
+                accepted.add(overlays.get(i));
+            }
+        }
+        return accepted;
+    }
+
     private static boolean hasFailure(Result result, String label) {
         return result.failures().stream().anyMatch(line -> line.startsWith("FAIL " + label));
     }
@@ -406,6 +475,7 @@ class PreflightScriptTest {
         install(bin.resolve("docker"), FAKE_DOCKER);
         install(bin.resolve("curl"), FAKE_CURL);
         install(bin.resolve("df"), FAKE_DF);
+        install(bin.resolve("python3"), FAKE_PYTHON);
         return state;
     }
 

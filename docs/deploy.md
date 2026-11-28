@@ -24,7 +24,7 @@ GitHub Actions의 deploy 워크플로 (수동 실행, main 브랜치만)
 | `ops/remote-deploy.sh` | 러너 | 고정한 호스트 키로 접속해 `preflight`, `deploy`를 차례로 요청하고 종료 코드의 뜻을 알려준다 |
 | `ops/ssh-deploy.sh` | 서버 | 배포 키의 강제 명령. `deploy <태그>`와 `preflight [<태그>]`만 받고 나머지는 거부, 호출 기록을 남긴다 |
 | `ops/lock-run.py` | 서버 | 배포가 한 번에 하나만 돌게 파일 락을 잡는다 |
-| `ops/preflight.sh` | 서버 | 읽기 전용 사전 점검(Docker, Compose 2.24 이상, 포트, 디스크 8GB, 메모리 4GB, `.env`, 레지스트리, 이미지 태그, 이웃 서비스 상태) |
+| `ops/preflight.sh` | 서버 | 읽기 전용 사전 점검(Docker, Compose 2.24 이상, python3, 포트, 디스크 8GB, 메모리 4GB, `.env`, 레지스트리, 이미지 태그, 이웃 서비스 상태) |
 | `ops/deploy.sh` | 서버 | 이미지 받기, 배포 직전 백업, 교체, 확인, 롤백 |
 | `ops/rolling.sh` | 서버 | api 복제본을 한 개씩 교체(api가 생기면 `deploy.sh`가 부른다) |
 | `ops/smoke.sh` | 서버 | 배포 직후 확인(worker 헬스, Prometheus 타깃) |
@@ -67,7 +67,7 @@ git clone https://github.com/KTH1007/gyeongjung-server.git /opt/gyeongjung
     sudo -u gyeongjung-deploy test -w "$f" && echo "쓸 수 있음(잘못) $f" || echo "쓸 수 없음 $f"
   done
   ```
-- 서버에 `python3`와 `curl`이 있어야 한다(`rolling.sh`, `lock-run.py`, `smoke.sh`가 쓴다).
+- 서버에 `python3`와 `curl`이 있어야 한다(`rolling.sh`, `lock-run.py`, `smoke.sh`가 쓴다). `preflight`가 `python3`는 락이 쓰는 `fcntl`까지 불러와서 확인한다.
 
 ### 2. Docker Compose v2
 서버에 `docker compose`(v2)가 없다. Docker 데몬은 건드리지 않고 **배포 사용자의 홈에만** 설치한다. 2.24 이상이 필요하다(`docker-compose.prod.yml`의 `!reset`).
@@ -78,7 +78,7 @@ git clone https://github.com/KTH1007/gyeongjung-server.git /opt/gyeongjung
 ```
 sudo install -m 600 -o gyeongjung-deploy -g gyeongjung-deploy /dev/null /opt/gyeongjung/.env
 ```
-- 로컬 `.env`를 복사하지 않는다. 복사하면 local 오버레이와 재생용 설정으로 뜬다. `preflight`가 권한 600, 필수 값, prod 오버레이 포함, local 오버레이 제외를 확인한다.
+- 로컬 `.env`를 복사하지 않는다. 복사하면 local 오버레이와 재생용 설정으로 뜬다. `preflight`가 권한 600, 필수 값, prod 오버레이 포함, 로컬용(`docker-compose.local.yml`)과 시험용(`*-test.yml`) 오버레이 제외를 확인한다.
 - 담을 것(비밀은 이 파일에만 있고 저장소에 올리지 않는다):
   ```
   COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml:docker-compose.alerting.yml

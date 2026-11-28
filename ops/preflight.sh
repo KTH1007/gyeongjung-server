@@ -50,7 +50,14 @@ else
     fail "Compose" "docker compose(v2)가 없다. 배포 사용자의 ~/.docker/cli-plugins에 설치한다"
 fi
 
-# 3. 포트. 우리 스택이 이미 떠 있으면 그 포트는 우리 것이라 건너뛴다. 연결이 되면 누가 쓰고 있다는 뜻이다.
+# 3. python3. 배포 락(lock-run.py)과 롤링(rolling.sh)이 쓴다. 락이 쓰는 fcntl까지 불러와서 실제로 돌 수 있는지 본다.
+if python3 -c 'import fcntl' > /dev/null 2>&1; then
+    ok "python3"
+else
+    fail "python3" "python3가 없거나 fcntl을 불러오지 못한다. 배포 락(ops/lock-run.py)과 롤링(ops/rolling.sh)이 쓴다"
+fi
+
+# 4. 포트. 우리 스택이 이미 떠 있으면 그 포트는 우리 것이라 건너뛴다. 연결이 되면 누가 쓰고 있다는 뜻이다.
 if [ -n "$(docker compose -p gyeongjung ps -q 2> /dev/null)" ]; then
     skip "포트" "이미 배포된 스택이 떠 있어서 우리 컨테이너가 쓰는 포트일 수 있다"
 else
@@ -64,7 +71,7 @@ else
     if [ -z "$busy" ]; then ok "포트 ($ports)"; else fail "포트" "이미 쓰이고 있다:$busy"; fi
 fi
 
-# 4. 디스크. 이미지와 볼륨이 쌓이는 Docker 폴더가 있는 곳을 본다.
+# 5. 디스크. 이미지와 볼륨이 쌓이는 Docker 폴더가 있는 곳을 본다.
 available_kb=$(df -Pk "$root" 2> /dev/null | awk 'NR==2 {print $4}')
 if [[ $available_kb =~ ^[0-9]+$ ]] && [ "$available_kb" -ge $((min_disk_gb * 1048576)) ]; then
     ok "디스크 여유 $((available_kb / 1048576))GB"
@@ -72,7 +79,7 @@ else
     fail "디스크" "여유가 ${min_disk_gb}GB 이상이어야 한다 (지금 ${available_kb:-알 수 없음}KB, $root)"
 fi
 
-# 5. 메모리. 우리 컨테이너 한도의 합과 같은 서버의 다른 서비스가 같이 쓴다.
+# 6. 메모리. 우리 컨테이너 한도의 합과 같은 서버의 다른 서비스가 같이 쓴다.
 available_mem_kb=$(awk '/^MemAvailable:/ {print $2}' "$meminfo_file" 2> /dev/null)
 if [[ $available_mem_kb =~ ^[0-9]+$ ]] && [ "$available_mem_kb" -ge $((min_memory_mb * 1024)) ]; then
     ok "메모리 가용 $((available_mem_kb / 1024))MB"
@@ -80,7 +87,7 @@ else
     fail "메모리" "가용 메모리가 ${min_memory_mb}MB 이상이어야 한다 (지금 ${available_mem_kb:-알 수 없음}KB)"
 fi
 
-# 6. 서버 .env. 값을 읽기만 한다(source하지 않는다). 로컬용 .env를 복사해 오면 local 오버레이로 뜨는 실수를 막는다.
+# 7. 서버 .env. 값을 읽기만 한다(source하지 않는다). 로컬용 .env를 복사해 오거나 시험용 오버레이가 남아 있으면 서버가 그 구성으로 뜬다.
 check_env_file() {
     if [ ! -f "$env_file" ]; then
         fail ".env" "$env_file 이(가) 없다"
@@ -100,14 +107,15 @@ check_env_file() {
         *docker-compose.prod.yml*) ;;
         *) problems="$problems COMPOSE_FILE에 docker-compose.prod.yml이 없다;" ;;
     esac
+    # *-test.yml은 이름 규칙으로 막는다. 시험용 오버레이가 새로 생겨도 서버 .env에 들어가면 여기서 걸린다.
     case "$compose_file" in
-        *docker-compose.local.yml*) problems="$problems COMPOSE_FILE에 로컬용 docker-compose.local.yml이 들어 있다;" ;;
+        *docker-compose.local.yml* | *-test.yml*) problems="$problems COMPOSE_FILE에 로컬용이나 시험용 오버레이가 들어 있다 ($compose_file);" ;;
     esac
     if [ -z "$problems" ]; then ok ".env"; else fail ".env" "$problems"; fi
 }
 check_env_file
 
-# 7. compose 설정. 필수 변수 누락, 문법 오류를 실제 서버의 .env와 합쳐서 잡는다.
+# 8. compose 설정. 필수 변수 누락, 문법 오류를 실제 서버의 .env와 합쳐서 잡는다.
 if [ -z "$compose_available" ]; then
     # Compose가 없으면 모든 compose 명령이 같은 이유로 실패한다. 실패를 둘로 보여주면 진짜 원인을 찾기 어렵다.
     skip "compose 설정" "Compose가 없어서 점검할 수 없다 (위의 Compose 실패를 먼저 고친다)"
@@ -117,7 +125,7 @@ else
     fail "compose 설정" "$(echo "$config_output" | head -n 3 | tr '\n' ' ')"
 fi
 
-# 8. 레지스트리. 인증 전에는 401이 정상 응답이다.
+# 9. 레지스트리. 인증 전에는 401이 정상 응답이다.
 if [ -z "${IMAGE_REGISTRY:-}" ]; then
     fail "레지스트리" "IMAGE_REGISTRY가 필요하다 (예: ghcr.io/소유자)"
 else
@@ -129,7 +137,7 @@ else
     esac
 fi
 
-# 9. 이미지 태그. 받지 않고 레지스트리에 있는지만 본다. 앱과 백업 이미지가 둘 다 있어야 한다.
+# 10. 이미지 태그. 받지 않고 레지스트리에 있는지만 본다. 앱과 백업 이미지가 둘 다 있어야 한다.
 if [ -z "$tag" ]; then
     skip "이미지 태그" "태그를 주지 않았다"
 elif [ -z "${IMAGE_REGISTRY:-}" ]; then
@@ -142,7 +150,7 @@ else
     if [ -z "$missing" ]; then ok "이미지 태그 ($tag)"; else fail "이미지 태그" "레지스트리에서 찾지 못했다:$missing"; fi
 fi
 
-# 10. 이웃 서비스. 같은 서버의 다른 서비스가 정상일 때만 배포한다. 이름을 저장소에 적지 않으려고 주소를 환경변수로 받는다.
+# 11. 이웃 서비스. 같은 서버의 다른 서비스가 정상일 때만 배포한다. 이름을 저장소에 적지 않으려고 주소를 환경변수로 받는다.
 if [ -z "${NEIGHBOR_HEALTH_URL:-}" ]; then
     skip "이웃 서비스" "NEIGHBOR_HEALTH_URL을 주지 않았다"
 else
