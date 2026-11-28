@@ -101,7 +101,7 @@
    ```
 8. **다시 시작한다.**
    - 데이터만 복구했다면 현재 이미지 그대로: `docker compose start worker`
-   - 비호환 마이그레이션을 되돌렸다면 **이전 이미지로** 시작한다. 현재 이미지를 시작하면 복원한 DB에 문제의 마이그레이션을 다시 적용한다. 이전 태그는 서버의 `docker image ls --filter label=project=gyeongjung`에 남아 있는 것(현재와 직전)이거나 GitHub의 이전 deploy 실행 기록에서 찾는다. 그 태그로 deploy 워크플로를 `tag` 입력과 함께 실행하거나(`docs/deploy.md`의 "롤백하기"), GitHub를 쓸 수 없으면 서버에서 `IMAGE_REGISTRY=ghcr.io/<소유자> ./ops/deploy.sh <이전 태그>`를 실행한다. 이 스크립트는 배포 직전 백업을 한 번 더 만들고 이미지를 받아 교체한 뒤 확인한다. 3번에서 worker를 멈춰 둔 상태라 실패해도 되돌릴 이전 버전이 없다(종료 코드 30)는 점에 유의한다.
+   - 비호환 마이그레이션을 되돌렸다면 **이전 이미지로** 시작한다. 현재 이미지를 시작하면 복원한 DB에 문제의 마이그레이션을 다시 적용한다. 이전 태그는 서버의 `docker image ls --filter label=project=gyeongjung`에 남아 있는 것(현재와 직전)이거나 GitHub의 이전 deploy 실행 기록에서 찾는다. 그 태그로 deploy 워크플로를 `tag` 입력과 함께 실행하거나(`docs/deploy.md`의 "롤백하기"), GitHub를 쓸 수 없으면 서버에서 관리 계정으로 `sudo -H -u gyeongjung-deploy env IMAGE_REGISTRY=ghcr.io/<소유자> /opt/gyeongjung/ops/deploy.sh <이전 태그>`을 실행한다. 이 스크립트는 배포 직전 백업을 한 번 더 만들고 이미지를 받아 교체한 뒤 확인한다. 3번에서 worker를 멈춰 둔 상태라 실패해도 되돌릴 이전 버전이 없다(종료 코드 30)는 점에 유의한다.
 
    시작한 뒤 `./ops/smoke.sh`로 상태를 확인한다.
 9. **꺼낸 파일을 지운다.** `rm /tmp/restore.sql.gz` (실제 데이터가 들어 있다)

@@ -105,7 +105,7 @@ command="/opt/gyeongjung/ops/ssh-deploy.sh ghcr.io/<소유자 소문자>",no-pty
 - 이 키로는 `deploy <태그>`와 `preflight [<태그>]`만 실행된다. 다른 명령, 셸, 포트 포워딩, pty는 거부된다.
 
 ### 5. GitHub 설정 (사용자가 직접)
-저장소 Settings → Secrets and variables → Actions에 비밀 4개를 등록한다. 등록한 뒤 개인 키 파일은 지운다.
+저장소 Settings → Secrets and variables → Actions에 비밀 4개를 등록한다. 개인 키 파일은 아래 6단계의 확인이 끝난 뒤에 지운다.
 
 | 이름 | 값 |
 |---|---|
@@ -125,7 +125,7 @@ ssh -i ./gyeongjung-deploy gyeongjung-deploy@<호스트> preflight     # 사전 
 ssh -i ./gyeongjung-deploy gyeongjung-deploy@<호스트> ls            # 거부(종료 코드 126)
 ssh -i ./gyeongjung-deploy gyeongjung-deploy@<호스트>               # 셸도 거부(126)
 ```
-`preflight`의 FAIL 항목을 모두 고친다.
+`preflight`의 FAIL 항목을 모두 고친다. 확인이 끝나면 **개인 키 파일(`gyeongjung-deploy`)을 지운다.** 키는 GitHub 비밀에만 남긴다.
 
 ## 배포하기
 1. GitHub → Actions → **deploy** → Run workflow. Branch는 `main`이어야 한다(다른 브랜치는 두 잡이 건너뛰어진다).
@@ -163,7 +163,7 @@ ssh -i ./gyeongjung-deploy gyeongjung-deploy@<호스트>               # 셸도 
 | 배포 중 확인이 실패했다 | **자동**으로 이전 이미지로 돌아간다(종료 코드 20). 할 일은 원인 조사뿐이다 |
 | 배포는 성공했는데 나중에 문제를 발견했다 | deploy 워크플로를 `tag`에 **이전 커밋 해시**를 넣어 실행한다. 빌드를 건너뛰고 그 이미지로 같은 배포를 한다 |
 | 사전 점검이 막는데 롤백이 급하다 | 위와 같이 하고 `skip_preflight`를 켠다 |
-| GitHub를 쓸 수 없다 | 서버에서 관리 계정으로 `cd /opt/gyeongjung && IMAGE_REGISTRY=ghcr.io/<소유자> ./ops/deploy.sh <이전 태그>`. 이 경로는 락을 거치지 않으므로 다른 배포가 돌고 있지 않은지 `deploy.log`로 먼저 본다 |
+| GitHub를 쓸 수 없다 | 서버에서 관리 계정으로 **배포 사용자의 권한으로** `sudo -H -u gyeongjung-deploy env IMAGE_REGISTRY=ghcr.io/<소유자> /opt/gyeongjung/ops/deploy.sh <이전 태그>`을 실행한다(Compose와 `.env`가 배포 사용자 몫이라 관리 계정으로 바로 돌리면 읽지 못한다). 이 경로는 락을 거치지 않으므로 다른 배포가 돌고 있지 않은지 `deploy.log`로 먼저 본다 |
 | DB 스키마가 이전 버전과 호환되지 않는다 | 이미지만 되돌려서는 안 된다. `docs/runbook.md`의 복구 절차로 배포 직전 백업을 복원하고 이전 이미지로 시작한다 |
 
 이전 태그는 서버의 `docker image ls --filter label=project=gyeongjung`에 남아 있는 것(현재와 직전)이거나 GitHub의 이전 deploy 실행 기록에서 찾는다.
